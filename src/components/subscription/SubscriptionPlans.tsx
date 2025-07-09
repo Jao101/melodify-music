@@ -1,7 +1,10 @@
-import { Check, Zap, Users, Crown } from "lucide-react";
+import { Check, Zap, Users, Crown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface PlanFeature {
   text: string;
@@ -91,10 +94,14 @@ export function SubscriptionPlans({
   currentPlan = 'free',
   isYearly = false 
 }: SubscriptionPlansProps) {
+  const { subscribeToplan, isSubscriptionActive, user } = useAuth();
+  const [subscribing, setSubscribing] = useState(false);
+  const [billingPeriod, setBillingPeriod] = useState(isYearly);
+
   const getPrice = (plan: SubscriptionPlan) => {
     if (plan.price.monthly === 0) return 'Free';
-    const price = isYearly ? plan.price.yearly : plan.price.monthly;
-    const period = isYearly ? '/year' : '/month';
+    const price = billingPeriod ? plan.price.yearly : plan.price.monthly;
+    const period = billingPeriod ? '/year' : '/month';
     return `$${price}${period}`;
   };
 
@@ -106,36 +113,69 @@ export function SubscriptionPlans({
     return { amount: savings, percentage };
   };
 
+  const handleSelectPlan = async (planId: string, isYearly: boolean) => {
+    if (!user) {
+      // Redirect to login if not logged in
+      toast.error("Please log in to subscribe to a plan");
+      window.location.href = '/auth';
+      return;
+    }
+
+    setSubscribing(true);
+    
+    try {
+      const redirectUrl = await subscribeToplan(planId, isYearly);
+      
+      if (redirectUrl) {
+        // If it's a direct update (free plan), call onSelectPlan
+        if (planId === 'free') {
+          onSelectPlan(planId, isYearly);
+          toast.success("Your subscription has been updated to the Free plan");
+        } else {
+          // For paid plans, redirect to Stripe checkout
+          window.location.href = redirectUrl;
+        }
+      } else {
+        throw new Error("Failed to create subscription");
+      }
+    } catch (error) {
+      console.error("Subscription error:", error);
+      toast.error("There was an error processing your subscription request");
+    } finally {
+      setSubscribing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Billing Toggle */}
-      <div className="flex items-center justify-center gap-4 p-1 bg-muted rounded-lg w-fit mx-auto">
+      {/* Spotify-style Billing Toggle */}
+      <div className="flex items-center justify-center gap-4 p-1 bg-card rounded-full w-fit mx-auto shadow-md">
         <button
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            !isYearly 
-              ? 'bg-background text-foreground shadow-sm' 
+          className={`px-6 py-2 rounded-full text-sm font-medium transition-colors ${
+            !billingPeriod 
+              ? 'bg-primary text-primary-foreground shadow-sm' 
               : 'text-muted-foreground hover:text-foreground'
           }`}
-          onClick={() => {/* Handle monthly toggle */}}
+          onClick={() => setBillingPeriod(false)}
         >
           Monthly
         </button>
         <button
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors relative ${
-            isYearly 
-              ? 'bg-background text-foreground shadow-sm' 
+          className={`px-6 py-2 rounded-full text-sm font-medium transition-colors relative ${
+            billingPeriod 
+              ? 'bg-primary text-primary-foreground shadow-sm' 
               : 'text-muted-foreground hover:text-foreground'
           }`}
-          onClick={() => {/* Handle yearly toggle */}}
+          onClick={() => setBillingPeriod(true)}
         >
           Yearly
-          <Badge variant="secondary" className="absolute -top-2 -right-2 text-xs bg-accent text-accent-foreground">
+          <Badge variant="secondary" className="absolute -top-2 -right-2 text-xs bg-accent text-accent-foreground px-2 py-0.5">
             Save 17%
           </Badge>
         </button>
       </div>
 
-      {/* Plans Grid */}
+      {/* Spotify-style Plans Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
         {plans.map((plan) => {
           const Icon = plan.icon;
@@ -145,45 +185,45 @@ export function SubscriptionPlans({
           return (
             <Card 
               key={plan.id}
-              className={`music-card relative p-6 ${
+              className={`music-card relative p-6 hover:scale-[1.02] transition-transform ${
                 plan.popular ? 'ring-2 ring-primary shadow-[var(--shadow-glow)]' : ''
               } ${
                 isCurrentPlan ? 'bg-primary/5 border-primary/30' : ''
               }`}
             >
               {plan.popular && (
-                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground">
+                <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-4 py-1 font-medium">
                   Most Popular
                 </Badge>
               )}
 
               <div className="text-center mb-6">
-                <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full mb-4 ${
+                <div className={`inline-flex items-center justify-center w-14 h-14 rounded-full mb-4 ${
                   plan.color === 'primary' ? 'bg-primary text-primary-foreground' :
                   plan.color === 'accent' ? 'bg-accent text-accent-foreground' :
                   'bg-muted text-muted-foreground'
                 }`}>
-                  <Icon className="h-6 w-6" />
+                  <Icon className="h-7 w-7" />
                 </div>
-                <h3 className="text-xl font-bold mb-2">{plan.name}</h3>
+                <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
                 <p className="text-muted-foreground text-sm mb-4">{plan.description}</p>
                 
-                <div className="mb-4">
-                  <div className="text-3xl font-bold">{getPrice(plan)}</div>
-                  {isYearly && savings && (
-                    <div className="text-sm text-accent">
+                <div className="mb-6">
+                  <div className="text-4xl font-bold">{getPrice(plan)}</div>
+                  {billingPeriod && savings && (
+                    <div className="text-sm text-primary mt-1">
                       Save ${savings.amount}/year ({savings.percentage}% off)
                     </div>
                   )}
                 </div>
               </div>
 
-              <div className="space-y-3 mb-6">
+              <div className="space-y-3 mb-8">
                 {plan.features.map((feature, index) => (
                   <div key={index} className="flex items-center gap-3">
                     <div className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center ${
                       feature.included 
-                        ? 'bg-accent text-accent-foreground' 
+                        ? (plan.color === 'primary' ? 'bg-primary text-primary-foreground' : 'bg-accent text-accent-foreground')
                         : 'bg-muted text-muted-foreground'
                     }`}>
                       <Check className="h-3 w-3" />
@@ -198,18 +238,26 @@ export function SubscriptionPlans({
               </div>
 
               <Button
-                className={`w-full ${
+                className={`w-full rounded-full flex items-center justify-center gap-1 ${
                   plan.color === 'primary' ? 'bg-primary hover:bg-primary/90' :
                   plan.color === 'accent' ? 'bg-accent hover:bg-accent/90 text-accent-foreground' :
                   ''
                 }`}
                 variant={plan.color === 'muted' ? 'outline' : 'default'}
-                onClick={() => onSelectPlan(plan.id, isYearly)}
-                disabled={isCurrentPlan}
+                onClick={() => handleSelectPlan(plan.id, billingPeriod)}
+                disabled={isCurrentPlan || subscribing}
               >
-                {isCurrentPlan ? 'Current Plan' : 
+                {subscribing ? 'Processing...' : 
+                 isCurrentPlan ? 'Current Plan' : 
                  plan.price.monthly === 0 ? 'Get Started' : 'Upgrade Now'}
+                {!isCurrentPlan && !subscribing && <ChevronRight className="h-4 w-4" />}
               </Button>
+              
+              {isCurrentPlan && (
+                <div className="text-center mt-3">
+                  <span className="text-xs text-primary font-medium">Current Plan</span>
+                </div>
+              )}
             </Card>
           );
         })}

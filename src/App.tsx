@@ -8,6 +8,8 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
+import SubscriptionSuccess from "./pages/SubscriptionSuccess";
+import SubscriptionCancel from "./pages/SubscriptionCancel";
 
 const queryClient = new QueryClient();
 
@@ -29,18 +31,18 @@ const App = () => (
               } 
             />
             <Route 
-              path="/search" 
+              path="/subscription-success" 
               element={
                 <ProtectedRoute>
-                  <Index />
+                  <SubscriptionSuccess />
                 </ProtectedRoute>
               } 
             />
             <Route 
-              path="/library" 
+              path="/subscription-cancel" 
               element={
                 <ProtectedRoute>
-                  <Index />
+                  <SubscriptionCancel />
                 </ProtectedRoute>
               } 
             />

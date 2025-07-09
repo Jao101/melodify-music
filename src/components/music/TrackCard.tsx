@@ -1,12 +1,6 @@
-import { Play, Pause, MoreHorizontal, Heart, Plus, Music } from "lucide-react";
+import { Play, Pause, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 interface Track {
   id: string;
@@ -23,19 +17,13 @@ interface TrackCardProps {
   isPlaying?: boolean;
   isCurrentTrack?: boolean;
   onPlay: () => void;
-  onAddToPlaylist?: () => void;
-  onLike?: () => void;
-  isLiked?: boolean;
 }
 
 export function TrackCard({ 
   track, 
   isPlaying = false, 
   isCurrentTrack = false,
-  onPlay, 
-  onAddToPlaylist,
-  onLike,
-  isLiked = false 
+  onPlay
 }: TrackCardProps) {
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -45,11 +33,11 @@ export function TrackCard({
 
   return (
     <Card className={`music-card group hover:bg-secondary/50 transition-all duration-300 ${
-      isCurrentTrack ? 'ring-2 ring-primary' : ''
+      isCurrentTrack ? 'ring-1 ring-primary/50' : ''
     }`}>
       <div className="flex items-center gap-4 p-4">
-        {/* Album Art */}
-        <div className="relative h-12 w-12 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+        {/* Album Art with Cover Effect */}
+        <div className="relative h-12 w-12 rounded-md bg-muted flex items-center justify-center overflow-hidden group-hover:shadow-md transition-all">
           {track.imageUrl ? (
             <img 
               src={track.imageUrl} 
@@ -64,12 +52,12 @@ export function TrackCard({
             </div>
           )}
           
-          {/* Play/Pause Overlay */}
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* Play/Pause Overlay with improved hover effect */}
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
             <Button
               variant="ghost"
               size="icon"
-              className="audio-button w-8 h-8 bg-primary text-primary-foreground hover:bg-primary/90"
+              className="audio-button w-8 h-8 bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-110 transition-transform"
               onClick={onPlay}
             >
               {isPlaying && isCurrentTrack ? (
@@ -81,7 +69,7 @@ export function TrackCard({
           </div>
         </div>
 
-        {/* Track Info */}
+        {/* Track Info with Now Playing Indicator */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className={`font-medium truncate ${
@@ -90,9 +78,19 @@ export function TrackCard({
               {track.title}
             </h3>
             {track.isAI && (
-              <span className="px-2 py-0.5 bg-accent text-accent-foreground text-xs rounded-full font-medium">
+              <span className="px-2 py-0.5 bg-primary/20 text-primary text-xs rounded-full font-medium">
                 AI
               </span>
+            )}
+            
+            {/* Now Playing Indicator */}
+            {isPlaying && isCurrentTrack && (
+              <div className="now-playing-indicator ml-1">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
             )}
           </div>
           <p className="text-sm text-muted-foreground truncate">{track.artist}</p>
@@ -102,38 +100,6 @@ export function TrackCard({
         {/* Duration */}
         <div className="text-sm text-muted-foreground">
           {formatDuration(track.duration)}
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="w-8 h-8"
-            onClick={onLike}
-          >
-            <Heart 
-              className={`h-4 w-4 ${isLiked ? 'fill-accent text-accent' : 'text-muted-foreground'}`} 
-            />
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="w-8 h-8">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onAddToPlaylist}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add to Playlist
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Heart className="h-4 w-4 mr-2" />
-                {isLiked ? 'Remove from Liked' : 'Add to Liked'}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
     </Card>

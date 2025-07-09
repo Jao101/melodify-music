@@ -2,71 +2,71 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Auralia AI Beats - Music Streaming Platform Design System */
+/* Auralia AI - Spotify-inspired Music Streaming Platform */
 
 @layer base {
   :root {
-    /* Core Brand Colors - Music-focused palette */
-    --background: 220 26% 4%;
-    --foreground: 210 40% 98%;
+    /* Spotify-inspired Dark Theme */
+    --background: 0 0% 7%;           /* #121212 - Spotify's main background */
+    --foreground: 0 0% 100%;         /* Pure white text */
 
-    --card: 220 24% 6%;
-    --card-foreground: 210 40% 98%;
+    --card: 0 0% 9%;                 /* #171717 - Slightly lighter than background */
+    --card-foreground: 0 0% 100%;
 
-    --popover: 220 24% 6%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 12%;             /* #1f1f1f - Popover background */
+    --popover-foreground: 0 0% 100%;
 
-    /* Primary - Vibrant Purple for music branding */
-    --primary: 280 100% 60%;
-    --primary-foreground: 210 40% 98%;
-    --primary-muted: 280 50% 30%;
+    /* Spotify Green as Primary */
+    --primary: 141 76% 48%;          /* #1db954 - Spotify's signature green */
+    --primary-foreground: 0 0% 0%;   /* Black text on green */
+    --primary-muted: 141 50% 30%;
 
-    /* Secondary - Electric Blue accent */
-    --secondary: 220 24% 8%;
-    --secondary-foreground: 210 40% 98%;
+    /* Dark greys for secondary elements */
+    --secondary: 0 0% 15%;           /* #262626 - Dark grey */
+    --secondary-foreground: 0 0% 90%;
 
-    --muted: 220 20% 12%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 0 0% 20%;               /* #333333 - Muted backgrounds */
+    --muted-foreground: 0 0% 65%;    /* #a6a6a6 - Muted text (Spotify grey) */
 
-    /* Accent - Neon Green for active states */
-    --accent: 140 100% 50%;
-    --accent-foreground: 220 26% 4%;
+    /* Subtle accent color */
+    --accent: 0 0% 25%;              /* #404040 - Hover states */
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;        /* Red for errors */
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 20% 12%;
-    --input: 220 20% 12%;
-    --ring: 280 100% 60%;
+    --border: 0 0% 20%;              /* #333333 - Subtle borders */
+    --input: 0 0% 15%;               /* #262626 - Input backgrounds */
+    --ring: 141 76% 48%;             /* Spotify green for focus rings */
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;                /* Slightly more rounded like Spotify */
 
-    /* Music-specific colors */
-    --audio-progress: 280 100% 60%;
-    --audio-background: 220 20% 8%;
-    --waveform-active: 140 100% 50%;
-    --waveform-inactive: 220 20% 20%;
+    /* Music Player specific colors */
+    --audio-progress: 141 76% 48%;   /* Spotify green for progress */
+    --audio-background: 0 0% 25%;    /* Progress track background */
+    --waveform-active: 141 76% 48%;  /* Green waveforms */
+    --waveform-inactive: 0 0% 40%;
 
-    /* Gradients for immersive design */
-    --gradient-primary: linear-gradient(135deg, hsl(280 100% 60%), hsl(320 100% 50%));
-    --gradient-secondary: linear-gradient(135deg, hsl(220 100% 50%), hsl(280 100% 60%));
-    --gradient-accent: linear-gradient(135deg, hsl(140 100% 50%), hsl(180 100% 50%));
-    --gradient-dark: linear-gradient(135deg, hsl(220 26% 4%), hsl(220 24% 6%));
+    /* Spotify-inspired gradients and shadows */
+    --gradient-primary: linear-gradient(135deg, hsl(141 76% 48%), hsl(141 76% 40%));
+    --gradient-secondary: linear-gradient(135deg, hsl(0 0% 15%), hsl(0 0% 20%));
+    --gradient-accent: linear-gradient(135deg, hsl(141 76% 48%), hsl(141 76% 55%));
+    --gradient-dark: linear-gradient(135deg, hsl(0 0% 7%), hsl(0 0% 9%));
 
-    /* Audio-specific shadows */
-    --shadow-glow: 0 0 30px hsl(280 100% 60% / 0.3);
-    --shadow-audio: 0 4px 20px hsl(280 100% 60% / 0.2);
-    --shadow-card: 0 4px 12px hsl(220 26% 2% / 0.5);
+    /* Subtle shadows like Spotify */
+    --shadow-glow: 0 0 20px hsl(141 76% 48% / 0.3);
+    --shadow-audio: 0 2px 8px hsl(0 0% 0% / 0.3);
+    --shadow-card: 0 2px 8px hsl(0 0% 0% / 0.2);
 
-    /* Sidebar */
-    --sidebar-background: 220 26% 3%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 280 100% 60%;
-    --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 220 24% 6%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 220 20% 12%;
-    --sidebar-ring: 280 100% 60%;
+    /* Spotify-style Sidebar - Dunklere Farben für noch mehr Spotify-Feeling */
+    --sidebar-background: 0 0% 3%;         /* Noch dunkler als main background */
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 141 76% 48%;        /* Spotify green */
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 20%;            /* Hover states */
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 15%;            /* Subtle borders */
+    --sidebar-ring: 141 76% 48%;
 
     /* Animations */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -164,13 +164,22 @@
   }
 
   .gradient-text {
-    @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-primary via-primary to-primary bg-clip-text text-transparent;
   }
 
   .music-card {
-    @apply relative rounded-lg bg-card p-4 shadow-[var(--shadow-card)];
-    @apply transition-all duration-300 hover:shadow-[var(--shadow-audio)];
-    @apply border border-border/50 hover:border-primary/30;
+    @apply relative rounded-md bg-card p-3 shadow-[var(--shadow-card)];
+    @apply transition-all duration-200 hover:bg-accent/50;
+    @apply border-0 hover:shadow-[var(--shadow-audio)];
+  }
+
+  /* Spotify-style hover effects */
+  .spotify-hover {
+    @apply transition-all duration-200 hover:bg-accent/50;
+  }
+
+  .spotify-card {
+    @apply bg-card rounded-md p-4 transition-all duration-200 hover:bg-accent/30;
   }
 
   .player-glow {
@@ -189,12 +198,190 @@
   }
 }
 
-@layer base {
-  * {
-    @apply border-border;
+/* Spotify-inspired Custom Styles */
+@layer components {
+  /* Card styling */
+  .music-card {
+    transition: all 0.2s ease;
+    background-color: hsl(var(--card));
+    box-shadow: var(--shadow-card);
+  }
+  
+  .music-card:hover {
+    transform: scale(1.02);
+    background-color: hsl(var(--secondary) / 0.8);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+  }
+  
+  /* Gradient text like Spotify Premium */
+  .gradient-text {
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    background-image: var(--gradient-accent);
+  }
+  
+  /* Audio player button styles */
+  .audio-button {
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: var(--transition-smooth);
   }
 
-  body {
-    @apply bg-background text-foreground;
+  /* Spotify-style grid layouts */
+  .spotify-grid {
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+  
+  /* Now playing indicator animation */
+  .now-playing-indicator {
+    display: flex;
+    align-items: flex-end;
+    height: 16px;
+    gap: 2px;
+  }
+  
+  .now-playing-indicator span {
+    display: block;
+    width: 3px;
+    background-color: hsl(var(--primary));
+    border-radius: 1px;
+    animation: audio-wave 1.2s linear infinite;
+  }
+  
+  .now-playing-indicator span:nth-child(1) {
+    height: 30%;
+    animation-delay: 0.1s;
+  }
+  
+  .now-playing-indicator span:nth-child(2) {
+    height: 60%;
+    animation-delay: 0.2s;
+  }
+  
+  .now-playing-indicator span:nth-child(3) {
+    height: 90%;
+    animation-delay: 0s;
+  }
+  
+  .now-playing-indicator span:nth-child(4) {
+    height: 40%;
+    animation-delay: 0.3s;
+  }
+  
+  /* Spotify-style pulse animation for player */
+  @keyframes audio-wave {
+    0% {
+      height: 40%;
+    }
+    50% {
+      height: 80%;
+    }
+    100% {
+      height: 40%;
+    }
+  }
+  
+  /* Glow effect for active player */
+  @keyframes pulse-glow {
+    0% {
+      box-shadow: 0 0 5px 0px hsl(var(--primary) / 0.5);
+    }
+    50% {
+      box-shadow: 0 0 10px 3px hsl(var(--primary) / 0.7);
+    }
+    100% {
+      box-shadow: 0 0 5px 0px hsl(var(--primary) / 0.5);
+    }
+  }
+  
+  .animate-pulse-glow {
+    animation: pulse-glow 2s infinite;
+  }
+  
+  /* Card hover effects */
+  .hover-lift {
+    transition: all 0.2s ease;
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-5px);
+  }
+  
+  /* Scrollbar styling like Spotify */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--accent));
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.7);
+  }
+  
+  /* Spotify-spezifische Sidebar-Stile */
+  .spotify-sidebar-group {
+    margin-bottom: 24px;
+  }
+  
+  .spotify-sidebar-title {
+    color: hsl(var(--muted-foreground));
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 0 16px;
+    margin-bottom: 8px;
+  }
+  
+  .spotify-sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    border-radius: 4px;
+    color: hsl(var(--muted-foreground));
+    transition: all 0.2s ease;
+  }
+  
+  .spotify-sidebar-link:hover, 
+  .spotify-sidebar-link.active {
+    color: hsl(var(--foreground));
+    background-color: hsla(var(--accent) / 0.3);
+  }
+  
+  .spotify-sidebar-link.active {
+    position: relative;
+  }
+  
+  .spotify-sidebar-link.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background-color: hsl(var(--primary));
+    border-top-right-radius: 2px;
+    border-bottom-right-radius: 2px;
+  }
+  
+  .spotify-sidebar-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
   }
 }

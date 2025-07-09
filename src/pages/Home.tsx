@@ -8,57 +8,7 @@ import { TrackCard } from "@/components/music/TrackCard";
 import { SubscriptionPlans } from "@/components/subscription/SubscriptionPlans";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Play, Sparkles, TrendingUp, Clock, Music, Heart } from "lucide-react";
-
-// Sample data for demo
-const featuredTracks = [
-  {
-    id: '1',
-    title: 'Cosmic Journey',
-    artist: 'AI Composer',
-    album: 'Digital Dreams',
-    duration: 240,
-    isAI: true,
-    imageUrl: '/api/placeholder/300/300'
-  },
-  {
-    id: '2',
-    title: 'Neon Nights',
-    artist: 'Synthwave AI',
-    album: 'Retro Future',
-    duration: 195,
-    isAI: true,
-    imageUrl: '/api/placeholder/300/300'
-  },
-  {
-    id: '3',
-    title: 'Electric Dreams',
-    artist: 'Digital Harmony',
-    album: 'AI Beats Vol. 1',
-    duration: 287,
-    isAI: true,
-    imageUrl: '/api/placeholder/300/300'
-  },
-];
-
-const recentlyPlayed = [
-  {
-    id: '4',
-    title: 'Midnight Groove',
-    artist: 'AI Jazz Collective',
-    album: 'Smooth Algorithms',
-    duration: 210,
-    isAI: true,
-  },
-  {
-    id: '5',
-    title: 'Bass Drop Paradise',
-    artist: 'Electronic AI',
-    album: 'Club Bangers',
-    duration: 180,
-    isAI: true,
-  },
-];
+import { Sparkles, Music, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
 
 export default function Home() {
   const [currentTrack, setCurrentTrack] = useState<any>(null);
@@ -66,9 +16,10 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(75);
   const [tracks, setTracks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [showSubscriptionPlans, setShowSubscriptionPlans] = useState(false);
 
-  const { profile } = useAuth();
+  const { profile, subscribeToplan } = useAuth();
 
   // Load tracks from Supabase
   useEffect(() => {
@@ -77,6 +28,7 @@ export default function Home() {
 
   const loadTracks = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('tracks')
         .select('*')
@@ -106,11 +58,29 @@ export default function Home() {
   };
 
   const handleNext = () => {
-    // Implementation for next track
+    if (!tracks.length) return;
+    
+    // Find current track index
+    const currentIndex = tracks.findIndex(t => t.id === currentTrack?.id);
+    const nextIndex = (currentIndex + 1) % tracks.length;
+    
+    // Set next track
+    setCurrentTrack(tracks[nextIndex]);
+    setCurrentTime(0);
+    setIsPlaying(true);
   };
 
   const handlePrevious = () => {
-    // Implementation for previous track
+    if (!tracks.length) return;
+    
+    // Find current track index
+    const currentIndex = tracks.findIndex(t => t.id === currentTrack?.id);
+    const prevIndex = currentIndex <= 0 ? tracks.length - 1 : currentIndex - 1;
+    
+    // Set previous track
+    setCurrentTrack(tracks[prevIndex]);
+    setCurrentTime(0);
+    setIsPlaying(true);
   };
 
   const handleSeek = (time: number) => {
@@ -121,95 +91,106 @@ export default function Home() {
     setVolume(newVolume);
   };
 
-  const handleSelectPlan = (planId: string, isYearly: boolean) => {
-    console.log('Selected plan:', planId, 'Yearly:', isYearly);
-    // Implementation for plan selection
+  // Handle subscription plan selection
+  const handleSelectPlan = async (planId: string, isYearly: boolean) => {
+    try {
+      const checkoutUrl = await subscribeToplan(planId, isYearly);
+      if (checkoutUrl) {
+        window.location.href = checkoutUrl;
+      }
+    } catch (error) {
+      console.error('Error selecting plan:', error);
+    }
   };
+
+  const handleShowSubscriptionPlans = () => {
+    setShowSubscriptionPlans(true);
+  };
+
+  const toggleSubscriptionPlans = () => {
+    setShowSubscriptionPlans(prev => !prev);
+  };
+
+  // Get greeting based on time of day
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
+  };
+
+  // Prüfen, ob der Benutzer kostenlos ist (zeige immer Upgrade-Möglichkeit)
+  const isFreeTier = !profile?.subscription_tier || profile?.subscription_tier === 'free';
 
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
-        <AppSidebar />
-        <main className="flex-1 pb-24">
-          <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-border">
-            <div className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-4">
-                <SidebarTrigger />
-                <h1 className="text-2xl font-bold gradient-text">
-                  Good evening, {profile?.display_name || 'Music Lover'}
+        <AppSidebar onShowSubscriptionPlans={handleShowSubscriptionPlans} />
+        <main className="flex-1 pb-24 overflow-y-auto">
+          {/* Spotify-style gradient header with adjustments for new sidebar */}
+          <header className="sticky top-0 z-40 bg-gradient-to-b from-primary/5 via-background/95 to-background backdrop-blur-sm pt-2">
+            <div className="flex items-center justify-between p-4 md:p-6">
+              <div className="flex items-center gap-6">
+                <SidebarTrigger className="bg-black/40 rounded-full p-2 md:hidden" />
+                <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+                  {getGreeting()}, <span className="text-primary">{profile?.display_name || 'Music Lover'}</span>
                 </h1>
               </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="bg-accent/10 text-accent border-accent/20 capitalize">
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="bg-black/30 text-muted-foreground border-0 px-3 py-1">
                   <Sparkles className="h-3 w-3 mr-1" />
                   {profile?.subscription_tier || 'Free'} Plan
                 </Badge>
-                <Button variant="default" className="bg-primary hover:bg-primary/90">
-                  Upgrade to Premium
-                </Button>
+                {isFreeTier && (
+                  <Button 
+                    variant="default" 
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium px-6 py-2 rounded-full"
+                    onClick={toggleSubscriptionPlans}
+                  >
+                    Upgrade
+                  </Button>
+                )}
               </div>
             </div>
           </header>
 
-          <div className="p-6 space-y-8">
-            {/* Quick Actions */}
-            <section>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Button
-                  variant="outline"
-                  className="h-16 flex items-center justify-start gap-3 bg-primary/5 border-primary/20 hover:bg-primary/10"
-                >
-                  <Music className="h-6 w-6 text-primary" />
-                  <span className="font-semibold">Generate AI Song</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-16 flex items-center justify-start gap-3 bg-secondary/50 hover:bg-secondary/70"
-                >
-                  <Heart className="h-6 w-6 text-accent" />
-                  <span className="font-semibold">Liked Songs</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-16 flex items-center justify-start gap-3 bg-secondary/50 hover:bg-secondary/70"
-                >
-                  <Clock className="h-6 w-6" />
-                  <span className="font-semibold">Recently Played</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-16 flex items-center justify-start gap-3 bg-secondary/50 hover:bg-secondary/70"
-                >
-                  <TrendingUp className="h-6 w-6" />
-                  <span className="font-semibold">Trending</span>
-                </Button>
-              </div>
-            </section>
-
-            {/* Featured AI Tracks */}
+          <div className="px-4 md:px-6 pb-6 space-y-10">
+            {/* Main Content - Music Library with Spotify styling */}
             <section>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold">Featured AI Tracks</h2>
-                <Button variant="ghost" className="text-primary hover:text-primary/80">
-                  See all
-                </Button>
+                <div className="group cursor-pointer">
+                  <h2 className="text-2xl font-bold text-foreground group-hover:underline">
+                    Your Music Library
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">Listen to your collection</p>
+                </div>
+                {tracks.length > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    className="text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
+                    Show all
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {loading ? (
-                  // Loading skeleton
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="music-card animate-pulse">
-                      <div className="flex items-center gap-4 p-4">
-                        <div className="h-12 w-12 bg-muted rounded-lg" />
-                        <div className="flex-1 space-y-2">
-                          <div className="h-4 bg-muted rounded w-3/4" />
-                          <div className="h-3 bg-muted rounded w-1/2" />
-                        </div>
+              
+              {loading ? (
+                // Loading skeleton - Spotify style grid
+                <div className="spotify-grid">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="music-card animate-pulse p-0 rounded-lg overflow-hidden">
+                      <div className="aspect-square bg-secondary/40 rounded-md mb-3"></div>
+                      <div className="px-3 pb-3 space-y-2">
+                        <div className="h-4 bg-secondary/40 rounded w-3/4"></div>
+                        <div className="h-3 bg-secondary/30 rounded w-1/2"></div>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  tracks.slice(0, 6).map((track) => (
+                  ))}
+                </div>
+              ) : tracks.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {tracks.map((track) => (
                     <TrackCard
                       key={track.id}
                       track={track}
@@ -217,56 +198,110 @@ export default function Home() {
                       isCurrentTrack={currentTrack?.id === track.id}
                       onPlay={() => handlePlayTrack(track)}
                     />
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                // Empty state - Enhanced Spotify style
+                <div className="rounded-xl bg-gradient-to-b from-secondary/30 to-secondary/10 p-8 text-center">
+                  <div className="mx-auto h-24 w-24 bg-primary/10 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                    <Music className="h-12 w-12 text-primary/80" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-2">It's a bit quiet here</h3>
+                  <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                    Your library is empty. Upgrade to Premium to unlock AI music generation and start creating your personal collection.
+                  </p>
+                  <Button 
+                    onClick={toggleSubscriptionPlans}
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-8 py-5 text-sm font-medium hover:scale-105 transition-transform"
+                  >
+                    Upgrade to Premium
+                  </Button>
+                </div>
+              )}
             </section>
 
-            {/* Recently Played */}
+            {/* For You Section - Spotify-like additional content section */}
             <section>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold">Recently Played</h2>
-                <Button variant="ghost" className="text-primary hover:text-primary/80">
-                  See all
-                </Button>
+                <div className="group cursor-pointer">
+                  <h2 className="text-2xl font-bold text-foreground group-hover:underline">
+                    For You
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">Curated collections</p>
+                </div>
               </div>
-              <div className="space-y-2">
-                {loading ? (
-                  // Loading skeleton
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="music-card animate-pulse">
-                      <div className="flex items-center gap-4 p-4">
-                        <div className="h-12 w-12 bg-muted rounded-lg" />
-                        <div className="flex-1 space-y-2">
-                          <div className="h-4 bg-muted rounded w-3/4" />
-                          <div className="h-3 bg-muted rounded w-1/2" />
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  tracks.slice(6, 9).map((track) => (
-                    <TrackCard
-                      key={track.id}
-                      track={track}
-                      isPlaying={isPlaying && currentTrack?.id === track.id}
-                      isCurrentTrack={currentTrack?.id === track.id}
-                      onPlay={() => handlePlayTrack(track)}
-                    />
-                  ))
-                )}
+              
+              {/* Spotify-like content boxes with gradient backgrounds */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="rounded-lg p-6 bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10 hover:border-primary/30 transition-colors cursor-pointer hover:shadow-lg">
+                  <h3 className="text-lg font-bold mb-1">Coming Soon</h3>
+                  <p className="text-sm text-muted-foreground">AI-powered music recommendations</p>
+                </div>
+                <div className="rounded-lg p-6 bg-gradient-to-br from-purple-500/20 to-purple-500/5 border border-purple-500/10 hover:border-purple-500/30 transition-colors cursor-pointer hover:shadow-lg">
+                  <h3 className="text-lg font-bold mb-1">Coming Soon</h3>
+                  <p className="text-sm text-muted-foreground">Top charts and new releases</p>
+                </div>
+                <div className="rounded-lg p-6 bg-gradient-to-br from-blue-500/20 to-blue-500/5 border border-blue-500/10 hover:border-blue-500/30 transition-colors cursor-pointer hover:shadow-lg">
+                  <h3 className="text-lg font-bold mb-1">Coming Soon</h3>
+                  <p className="text-sm text-muted-foreground">Your personalized AI mixes</p>
+                </div>
               </div>
             </section>
 
-            {/* Subscription Plans */}
-            <section>
-              <div className="text-center mb-8">
-                <h2 className="text-3xl font-bold mb-4">Choose Your Plan</h2>
-                <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                  Unlock the full potential of AI-powered music with our premium plans
-                </p>
-              </div>
-              <SubscriptionPlans onSelectPlan={handleSelectPlan} currentPlan={profile?.subscription_tier || 'free'} />
+            {/* Premium Plan Section - Toggle mit verbesserten Kontrollen */}
+            <section className="relative">
+              {/* Wenn Benutzer kostenlos ist, zeige immer die Überschrift */}
+              {isFreeTier && (
+                <div className="flex items-center justify-between mb-2">
+                  <div className="group cursor-pointer">
+                    <h2 className="text-2xl font-bold text-foreground group-hover:underline flex items-center gap-2">
+                      Premium Plans
+                      <Badge variant="outline" className="border-primary/30 text-primary ml-2 px-2 py-0.5 rounded-full">
+                        <Sparkles className="h-3 w-3 mr-1" /> Recommended
+                      </Badge>
+                    </h2>
+                  </div>
+                  <Button 
+                    variant="ghost"
+                    onClick={toggleSubscriptionPlans}
+                    className="text-primary hover:text-primary/90 hover:bg-primary/10 rounded-full flex items-center gap-1"
+                  >
+                    {showSubscriptionPlans ? (
+                      <>Hide Plans <ChevronUp className="h-4 w-4" /></>
+                    ) : (
+                      <>Show Plans <ChevronDown className="h-4 w-4" /></>
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {/* Subscription Plans - Mit Toggle-Logik */}
+              {(showSubscriptionPlans || false) && (
+                <div className="rounded-xl bg-gradient-to-r from-primary/5 via-accent/5 to-primary/5 p-8 border border-primary/10 transition-all duration-300">
+                  <div className="text-center mb-8">
+                    <Badge variant="outline" className="border-primary/30 text-primary mb-4 px-4 py-1 rounded-full">
+                      <Sparkles className="h-3 w-3 mr-1" /> Premium
+                    </Badge>
+                    <h2 className="text-3xl font-bold mb-4">Upgrade Your Experience</h2>
+                    <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+                      Unlock unlimited AI music generation and premium features
+                    </p>
+                  </div>
+                  <SubscriptionPlans 
+                    onSelectPlan={handleSelectPlan} 
+                    currentPlan={profile?.subscription_tier || 'free'} 
+                  />
+                  <div className="text-center mt-8">
+                    <Button 
+                      variant="outline" 
+                      onClick={toggleSubscriptionPlans}
+                      className="text-muted-foreground border-muted-foreground/30 hover:text-foreground rounded-full px-6 flex items-center gap-1"
+                    >
+                      Hide Plans <ChevronUp className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </section>
           </div>
         </main>

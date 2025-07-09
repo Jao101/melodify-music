@@ -1,5 +1,5 @@
-import { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
+import { ReactNode, useEffect, useState } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, Music } from 'lucide-react';
 
@@ -9,8 +9,18 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { user, loading } = useAuth();
+  const location = useLocation();
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  if (loading) {
+  useEffect(() => {
+    // If we're not loading and we have checked auth state, stop checking
+    if (!loading) {
+      setIsCheckingAuth(false);
+    }
+  }, [loading]);
+
+  // Show loading while auth is being determined
+  if (loading || isCheckingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center space-y-4">
@@ -26,8 +36,9 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
+  // If no user and not loading, redirect to auth
   if (!user) {
-    return <Navigate to="/auth" replace />;
+    return <Navigate to="/auth" replace state={{ from: location }} />;
   }
 
   return <>{children}</>;

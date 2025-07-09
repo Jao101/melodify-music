@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Play, Pause, SkipBack, SkipForward, Volume2, Shuffle, Repeat, Heart, Music } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 
@@ -36,9 +36,21 @@ export function MusicPlayer({
   volume,
   onVolumeChange,
 }: MusicPlayerProps) {
-  const [isLiked, setIsLiked] = useState(false);
-  const [isShuffled, setIsShuffled] = useState(false);
-  const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off');
+
+  const [isMuted, setIsMuted] = useState(false);
+  const [prevVolume, setPrevVolume] = useState(75);
+
+  // Handle mute/unmute
+  const toggleMute = () => {
+    if (isMuted) {
+      onVolumeChange(prevVolume);
+      setIsMuted(false);
+    } else {
+      setPrevVolume(volume);
+      onVolumeChange(0);
+      setIsMuted(true);
+    }
+  };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -63,18 +75,25 @@ export function MusicPlayer({
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border animate-slide-up">
-      {/* Progress Bar */}
-      <div className="w-full bg-audio-background h-1 cursor-pointer group">
+      {/* Progress Bar - Enhanced with hover effect */}
+      <div className="w-full bg-audio-background h-1 cursor-pointer group relative" onClick={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const percent = (e.clientX - rect.left) / rect.width;
+        onSeek(percent * currentTrack.duration);
+      }}>
         <div 
-          className="h-full bg-audio-progress transition-all duration-200 group-hover:bg-primary"
+          className="h-full bg-audio-progress relative transition-all duration-200 group-hover:bg-primary"
           style={{ width: `${progressPercentage}%` }}
-        />
+        >
+          {/* Draggable knob - appears on hover */}
+          <div className="absolute right-0 top-1/2 -translate-y-1/2 h-3 w-3 bg-primary rounded-full opacity-0 group-hover:opacity-100 shadow-sm -mr-1.5"></div>
+        </div>
       </div>
 
       <div className="flex items-center justify-between p-4 max-w-screen-2xl mx-auto">
         {/* Track Info */}
         <div className="flex items-center gap-4 min-w-0 flex-1">
-          <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+          <div className="h-14 w-14 rounded-md bg-muted flex items-center justify-center overflow-hidden shadow-md hover:shadow-lg transition-shadow">
             {currentTrack.imageUrl ? (
               <img 
                 src={currentTrack.imageUrl} 
@@ -82,43 +101,34 @@ export function MusicPlayer({
                 className="h-full w-full object-cover"
               />
             ) : (
-              <Music className="h-6 w-6 text-muted-foreground" />
+              <div className="h-full w-full bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center">
+                <Music className="h-6 w-6 text-muted-foreground" />
+              </div>
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h4 className="font-semibold text-sm truncate">{currentTrack.title}</h4>
+            <h4 className="font-semibold text-sm truncate text-foreground">{currentTrack.title}</h4>
             <p className="text-xs text-muted-foreground truncate">{currentTrack.artist}</p>
+            
+            {/* Now playing indicator */}
+            {isPlaying && (
+              <div className="now-playing-indicator mt-1">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="audio-button w-8 h-8"
-            onClick={() => setIsLiked(!isLiked)}
-          >
-            <Heart 
-              className={`h-4 w-4 ${isLiked ? 'fill-accent text-accent' : 'text-muted-foreground'}`} 
-            />
-          </Button>
         </div>
 
-        {/* Player Controls */}
+        {/* Player Controls - Enhanced UI */}
         <div className="flex flex-col items-center gap-2 flex-1 max-w-md">
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="icon"
-              className="audio-button w-8 h-8"
-              onClick={() => setIsShuffled(!isShuffled)}
-            >
-              <Shuffle 
-                className={`h-4 w-4 ${isShuffled ? 'text-accent' : 'text-muted-foreground'}`} 
-              />
-            </Button>
-            
-            <Button
-              variant="ghost"
-              size="icon"
-              className="audio-button w-8 h-8"
+              className="audio-button w-8 h-8 hover:bg-secondary/70"
               onClick={onPrevious}
             >
               <SkipBack className="h-4 w-4" />
@@ -127,7 +137,7 @@ export function MusicPlayer({
             <Button
               variant="ghost"
               size="icon"
-              className="audio-button w-12 h-12 bg-primary text-primary-foreground hover:bg-primary/90 animate-pulse-glow"
+              className="audio-button w-12 h-12 bg-primary text-primary-foreground hover:bg-primary/90 animate-pulse-glow hover:scale-105 transition-transform"
               onClick={onPlayPause}
             >
               {isPlaying ? (
@@ -140,28 +150,10 @@ export function MusicPlayer({
             <Button
               variant="ghost"
               size="icon"
-              className="audio-button w-8 h-8"
+              className="audio-button w-8 h-8 hover:bg-secondary/70"
               onClick={onNext}
             >
               <SkipForward className="h-4 w-4" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              className="audio-button w-8 h-8"
-              onClick={() => {
-                const modes: Array<'off' | 'all' | 'one'> = ['off', 'all', 'one'];
-                const currentIndex = modes.indexOf(repeatMode);
-                setRepeatMode(modes[(currentIndex + 1) % modes.length]);
-              }}
-            >
-              <Repeat 
-                className={`h-4 w-4 ${repeatMode !== 'off' ? 'text-accent' : 'text-muted-foreground'}`} 
-              />
-              {repeatMode === 'one' && (
-                <span className="absolute -top-1 -right-1 text-xs text-accent">1</span>
-              )}
             </Button>
           </div>
 
@@ -182,15 +174,29 @@ export function MusicPlayer({
           </div>
         </div>
 
-        {/* Volume Control */}
+        {/* Volume Control - Enhanced with mute toggle */}
         <div className="flex items-center gap-2 flex-1 justify-end">
-          <Volume2 className="h-4 w-4 text-muted-foreground" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="audio-button w-8 h-8 hover:bg-secondary/70"
+            onClick={toggleMute}
+          >
+            {volume === 0 || isMuted ? (
+              <VolumeX className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <Volume2 className="h-4 w-4 text-muted-foreground" />
+            )}
+          </Button>
           <Slider
             value={[volume]}
             max={100}
             step={1}
             className="w-24"
-            onValueChange={(value) => onVolumeChange(value[0])}
+            onValueChange={(value) => {
+              onVolumeChange(value[0]);
+              if (value[0] > 0) setIsMuted(false);
+            }}
           />
         </div>
       </div>
