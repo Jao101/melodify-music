@@ -2,95 +2,190 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* Auralia AI Beats - Music Streaming Platform Design System */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Core Brand Colors - Music-focused palette */
+    --background: 220 26% 4%;
+    --foreground: 210 40% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 220 24% 6%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 220 24% 6%;
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 222.2 47.4% 11.2%;
+    /* Primary - Vibrant Purple for music branding */
+    --primary: 280 100% 60%;
     --primary-foreground: 210 40% 98%;
+    --primary-muted: 280 50% 30%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Secondary - Electric Blue accent */
+    --secondary: 220 24% 8%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 220 20% 12%;
+    --muted-foreground: 215 20.2% 65.1%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Accent - Neon Green for active states */
+    --accent: 140 100% 50%;
+    --accent-foreground: 220 26% 4%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 220 20% 12%;
+    --input: 220 20% 12%;
+    --ring: 280 100% 60%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 98%;
+    /* Music-specific colors */
+    --audio-progress: 280 100% 60%;
+    --audio-background: 220 20% 8%;
+    --waveform-active: 140 100% 50%;
+    --waveform-inactive: 220 20% 20%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    /* Gradients for immersive design */
+    --gradient-primary: linear-gradient(135deg, hsl(280 100% 60%), hsl(320 100% 50%));
+    --gradient-secondary: linear-gradient(135deg, hsl(220 100% 50%), hsl(280 100% 60%));
+    --gradient-accent: linear-gradient(135deg, hsl(140 100% 50%), hsl(180 100% 50%));
+    --gradient-dark: linear-gradient(135deg, hsl(220 26% 4%), hsl(220 24% 6%));
 
-    --sidebar-primary: 240 5.9% 10%;
+    /* Audio-specific shadows */
+    --shadow-glow: 0 0 30px hsl(280 100% 60% / 0.3);
+    --shadow-audio: 0 4px 20px hsl(280 100% 60% / 0.2);
+    --shadow-card: 0 4px 12px hsl(220 26% 2% / 0.5);
 
-    --sidebar-primary-foreground: 0 0% 98%;
+    /* Sidebar */
+    --sidebar-background: 220 26% 3%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 280 100% 60%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 220 24% 6%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 220 20% 12%;
+    --sidebar-ring: 280 100% 60%;
 
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 280 100% 50%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 140 100% 40%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 280 100% 50%;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 280 100% 50%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 280 100% 50%;
+  }
+}
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Custom scrollbar for music UI */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary));
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.8);
+  }
+}
+
+@layer components {
+  /* Music-specific component styles */
+  .audio-button {
+    @apply relative inline-flex items-center justify-center rounded-full transition-all duration-300;
+    @apply hover:scale-105 active:scale-95;
+    @apply shadow-lg hover:shadow-[var(--shadow-glow)];
+  }
+
+  .audio-progress {
+    @apply relative h-1 w-full rounded-full bg-[var(--audio-background)];
+    @apply cursor-pointer transition-all duration-200;
+  }
+
+  .audio-progress::before {
+    @apply absolute left-0 top-0 h-full rounded-full bg-[var(--audio-progress)];
+    @apply transition-all duration-200;
+    content: '';
+    width: var(--progress, 0%);
+  }
+
+  .waveform-bar {
+    @apply bg-[var(--waveform-inactive)] transition-all duration-300;
+    @apply hover:bg-[var(--waveform-active)];
+  }
+
+  .waveform-bar.active {
+    @apply bg-[var(--waveform-active)];
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
+  }
+
+  .music-card {
+    @apply relative rounded-lg bg-card p-4 shadow-[var(--shadow-card)];
+    @apply transition-all duration-300 hover:shadow-[var(--shadow-audio)];
+    @apply border border-border/50 hover:border-primary/30;
+  }
+
+  .player-glow {
+    @apply relative;
+  }
+
+  .player-glow::before {
+    @apply absolute inset-0 rounded-[inherit] opacity-0 transition-opacity duration-300;
+    @apply bg-gradient-to-r from-primary/20 to-accent/20;
+    content: '';
+    z-index: -1;
+  }
+
+  .player-glow:hover::before {
+    @apply opacity-100;
   }
 }
 
