@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { MusicPlayer } from "@/components/music/MusicPlayer";
 import { TrackCard } from "@/components/music/TrackCard";
@@ -63,6 +65,31 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(75);
+  const [tracks, setTracks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const { profile } = useAuth();
+
+  // Load tracks from Supabase
+  useEffect(() => {
+    loadTracks();
+  }, []);
+
+  const loadTracks = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tracks')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setTracks(data || []);
+    } catch (error) {
+      console.error('Error loading tracks:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handlePlayTrack = (track: any) => {
     if (currentTrack?.id === track.id) {
@@ -109,13 +136,13 @@ export default function Home() {
               <div className="flex items-center gap-4">
                 <SidebarTrigger />
                 <h1 className="text-2xl font-bold gradient-text">
-                  Good evening
+                  Good evening, {profile?.display_name || 'Music Lover'}
                 </h1>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="bg-accent/10 text-accent border-accent/20">
+                <Badge variant="secondary" className="bg-accent/10 text-accent border-accent/20 capitalize">
                   <Sparkles className="h-3 w-3 mr-1" />
-                  Free Plan
+                  {profile?.subscription_tier || 'Free'} Plan
                 </Badge>
                 <Button variant="default" className="bg-primary hover:bg-primary/90">
                   Upgrade to Premium
@@ -168,15 +195,30 @@ export default function Home() {
                 </Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {featuredTracks.map((track) => (
-                  <TrackCard
-                    key={track.id}
-                    track={track}
-                    isPlaying={isPlaying && currentTrack?.id === track.id}
-                    isCurrentTrack={currentTrack?.id === track.id}
-                    onPlay={() => handlePlayTrack(track)}
-                  />
-                ))}
+                {loading ? (
+                  // Loading skeleton
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="music-card animate-pulse">
+                      <div className="flex items-center gap-4 p-4">
+                        <div className="h-12 w-12 bg-muted rounded-lg" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 bg-muted rounded w-3/4" />
+                          <div className="h-3 bg-muted rounded w-1/2" />
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  tracks.slice(0, 6).map((track) => (
+                    <TrackCard
+                      key={track.id}
+                      track={track}
+                      isPlaying={isPlaying && currentTrack?.id === track.id}
+                      isCurrentTrack={currentTrack?.id === track.id}
+                      onPlay={() => handlePlayTrack(track)}
+                    />
+                  ))
+                )}
               </div>
             </section>
 
@@ -189,15 +231,30 @@ export default function Home() {
                 </Button>
               </div>
               <div className="space-y-2">
-                {recentlyPlayed.map((track) => (
-                  <TrackCard
-                    key={track.id}
-                    track={track}
-                    isPlaying={isPlaying && currentTrack?.id === track.id}
-                    isCurrentTrack={currentTrack?.id === track.id}
-                    onPlay={() => handlePlayTrack(track)}
-                  />
-                ))}
+                {loading ? (
+                  // Loading skeleton
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="music-card animate-pulse">
+                      <div className="flex items-center gap-4 p-4">
+                        <div className="h-12 w-12 bg-muted rounded-lg" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 bg-muted rounded w-3/4" />
+                          <div className="h-3 bg-muted rounded w-1/2" />
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  tracks.slice(6, 9).map((track) => (
+                    <TrackCard
+                      key={track.id}
+                      track={track}
+                      isPlaying={isPlaying && currentTrack?.id === track.id}
+                      isCurrentTrack={currentTrack?.id === track.id}
+                      onPlay={() => handlePlayTrack(track)}
+                    />
+                  ))
+                )}
               </div>
             </section>
 
@@ -209,7 +266,7 @@ export default function Home() {
                   Unlock the full potential of AI-powered music with our premium plans
                 </p>
               </div>
-              <SubscriptionPlans onSelectPlan={handleSelectPlan} />
+              <SubscriptionPlans onSelectPlan={handleSelectPlan} currentPlan={profile?.subscription_tier || 'free'} />
             </section>
           </div>
         </main>

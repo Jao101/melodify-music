@@ -1,5 +1,6 @@
-import { Home, Search, Music, ListMusic, Users, Settings, PlusCircle, Heart } from "lucide-react";
+import { Home, Search, Music, ListMusic, Users, Settings, PlusCircle, Heart, LogOut } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Sidebar,
   SidebarContent,
@@ -26,6 +27,7 @@ const playlistItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+  const { signOut, profile } = useAuth();
 
   const getNavClass = ({ isActive }: { isActive: boolean }) =>
     isActive 
@@ -86,7 +88,34 @@ export function AppSidebar() {
         </SidebarGroup>
 
         {!collapsed && (
-          <div className="mt-auto p-4">
+          <div className="mt-auto p-4 space-y-4">
+            {/* User Profile */}
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30">
+              <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center">
+                <span className="text-xs font-bold text-primary-foreground">
+                  {profile?.display_name?.charAt(0)?.toUpperCase() || 'U'}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {profile?.display_name || 'User'}
+                </p>
+                <p className="text-xs text-muted-foreground capitalize">
+                  {profile?.subscription_tier || 'free'} plan
+                </p>
+              </div>
+            </div>
+
+            {/* Sign Out Button */}
+            <button
+              onClick={signOut}
+              className="w-full flex items-center gap-3 p-3 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="text-sm">Sign Out</span>
+            </button>
+
+            {/* Upgrade Banner */}
             <div className="rounded-lg bg-primary/10 p-4 border border-primary/20">
               <h3 className="font-semibold text-sm mb-2">Upgrade to Premium</h3>
               <p className="text-xs text-muted-foreground mb-3">
