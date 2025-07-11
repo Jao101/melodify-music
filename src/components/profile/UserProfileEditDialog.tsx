@@ -25,7 +25,6 @@ export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfi
   const [formData, setFormData] = useState({
     display_name: '',
     bio: '',
-    website: '',
   });
 
   // Set initial form data when profile or open state changes
@@ -34,7 +33,6 @@ export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfi
       setFormData({
         display_name: profile.display_name || '',
         bio: profile.bio || '',
-        website: profile.website || '',
       });
       
       // Save original name for comparison
@@ -116,7 +114,6 @@ export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfi
       const updateData: Record<string, any> = {
         display_name: formData.display_name,
         bio: formData.bio,
-        website: formData.website,
         avatar_url: avatarUrl,
         updated_at: new Date().toISOString()
       };
@@ -226,19 +223,6 @@ export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfi
             />
           </div>
           
-          <div className="space-y-2">
-            <Label htmlFor="website">Website</Label>
-            <Input
-              id="website"
-              name="website"
-              type="url"
-              placeholder="https://yourwebsite.com"
-              value={formData.website}
-              onChange={handleInputChange}
-              className="bg-background"
-            />
-          </div>
-
           
           <DialogFooter className="pt-4">
             <Button 
