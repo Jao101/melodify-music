@@ -101,6 +101,9 @@ export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfi
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('Profile object:', profile);
+    console.log('Profile ID:', profile?.id);
+    
     if (!profile?.id) {
       toast.error('No profile found to update');
       return;
