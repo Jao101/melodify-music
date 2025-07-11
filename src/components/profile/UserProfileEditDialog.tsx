@@ -16,7 +16,7 @@ interface UserProfileEditDialogProps {
 }
 
 export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfileEditDialogProps) {
-  const { refreshProfile } = useAuth();
+  const { refreshProfile, user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -101,11 +101,11 @@ export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfi
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('Profile object:', profile);
-    console.log('Profile ID:', profile?.id);
+    // Use user.id as fallback if profile is null
+    const userId = profile?.id || user?.id;
     
-    if (!profile?.id) {
-      toast.error('No profile found to update');
+    if (!userId) {
+      toast.error('No user or profile found to update');
       return;
     }
 
@@ -125,7 +125,7 @@ export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfi
       const { error } = await supabase
         .from('profiles')
         .update(updateData)
-        .eq('id', profile.id);
+        .eq('id', userId);
 
       if (error) {
         console.error('Error updating profile:', error);
