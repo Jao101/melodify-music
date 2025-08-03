@@ -57,7 +57,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: user.id,
           display_name: user.user_metadata?.username || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
           bio: '',
-          website: '',
           avatar_url: null,
           subscription_tier: 'free'
         };
@@ -83,10 +82,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
         if (!mounted) return;
         
-        console.log('Auth state changed:', event, session?.user?.email);
+        console.log('Auth state changed:', event, session?.user?.email || 'no user');
         setSession(session);
         setUser(session?.user ?? null);
         
