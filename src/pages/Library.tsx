@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Heart, Clock, Music, Search, Grid, List } from "lucide-react";
+import { Heart, Clock, Music, Search, Grid, List, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -94,11 +94,21 @@ export default function Library() {
       {/* Header */}
       <div className="p-6 bg-gradient-to-b from-primary/10 to-background">
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Your Library</h1>
-            <p className="text-muted-foreground mt-1">
-              {filteredTracks.length} songs available
-            </p>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate('/')}
+              className="hover:bg-secondary/70"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">Your Library</h1>
+              <p className="text-muted-foreground mt-1">
+                {filteredTracks.length} songs available
+              </p>
+            </div>
           </div>
           
           <div className="flex items-center gap-2">

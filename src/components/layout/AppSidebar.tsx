@@ -15,7 +15,7 @@ import { UserProfileMenu } from "@/components/profile/UserProfileMenu";
 
 // Spotify-typische Navigationsstruktur
 const mainNavItems = [
-  { title: "Home", url: "/", icon: Home, active: true },
+  { title: "Home", url: "/", icon: Home },
 ];
 
 // Platzhalter für zukünftige Funktionen
@@ -65,19 +65,22 @@ export function AppSidebar({ onShowSubscriptionPlans }: { onShowSubscriptionPlan
               {/* Hauptnavigation - verbesserte Spotify-Stil Indikation */}
               {mainNavItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <div 
-                      className="flex items-center gap-3 p-3 relative hover:text-primary transition-colors cursor-pointer"
-                      style={{
-                        backgroundColor: item.active ? 'hsla(var(--primary) / 0.1)' : '',
-                        borderLeftWidth: item.active ? '4px' : '0',
-                        borderLeftColor: item.active ? 'hsl(var(--primary))' : '',
-                        paddingLeft: item.active ? 'calc(0.75rem - 4px)' : '0.75rem'
-                      }}
-                    >
-                      <item.icon className={`h-5 w-5 ${item.active ? 'text-primary' : 'text-foreground'}`} />
-                      {!collapsed && <span className={`font-medium ${item.active ? 'text-primary' : 'text-foreground'}`}>{item.title}</span>}
-                    </div>
+                <SidebarMenuButton asChild>
+                  <div 
+                    onClick={() => navigate(item.url)}
+                    className={`flex items-center gap-3 p-3 relative hover:text-primary transition-colors cursor-pointer ${
+                      location.pathname === item.url ? 'text-primary' : 'text-foreground'
+                    }`}
+                    style={{
+                      backgroundColor: location.pathname === item.url ? 'hsla(var(--primary) / 0.1)' : '',
+                      borderLeftWidth: location.pathname === item.url ? '4px' : '0',
+                      borderLeftColor: location.pathname === item.url ? 'hsl(var(--primary))' : '',
+                      paddingLeft: location.pathname === item.url ? 'calc(0.75rem - 4px)' : '0.75rem'
+                    }}
+                  >
+                    <item.icon className={`h-5 w-5 ${location.pathname === item.url ? 'text-primary' : 'text-foreground'}`} />
+                    {!collapsed && <span className={`font-medium ${location.pathname === item.url ? 'text-primary' : 'text-foreground'}`}>{item.title}</span>}
+                  </div>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
