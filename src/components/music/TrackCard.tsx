@@ -1,6 +1,7 @@
-import { Play, Pause, Music } from "lucide-react";
+import { Play, Pause, Music, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { LikeButton } from "./LikeButton";
 
 interface Track {
   id: string;
@@ -97,9 +98,19 @@ export function TrackCard({
           <p className="text-xs text-muted-foreground truncate">{track.album}</p>
         </div>
 
-        {/* Duration */}
-        <div className="text-sm text-muted-foreground">
-          {formatDuration(track.duration)}
+        {/* Duration and Actions */}
+        <div className="flex items-center gap-2">
+          <LikeButton trackId={track.id} size="sm" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+          <div className="text-sm text-muted-foreground min-w-[3rem] text-right">
+            {formatDuration(track.duration)}
+          </div>
         </div>
       </div>
     </Card>

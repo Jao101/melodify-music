@@ -1,5 +1,6 @@
 import { Home, Music, ChevronRight, Search, Library, Heart, Plus, Download, Compass, Clock, Globe } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -19,12 +20,12 @@ const mainNavItems = [
 
 // Platzhalter für zukünftige Funktionen
 const libraryCategories = [
-  { title: "Your Library", icon: Library },
+  { title: "Your Library", icon: Library, url: "/library" },
 ];
 
 const quickLinks = [
   { title: "Create Playlist", icon: Plus, soon: true },
-  { title: "Liked Songs", icon: Heart, soon: true },
+  { title: "Liked Songs", icon: Heart, url: "/liked-songs" },
 ];
 
 const discoverLinks = [
@@ -37,6 +38,8 @@ export function AppSidebar({ onShowSubscriptionPlans }: { onShowSubscriptionPlan
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { profile } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   return (
     <Sidebar className={collapsed ? "w-16" : "w-64"} collapsible="icon">
@@ -104,12 +107,18 @@ export function AppSidebar({ onShowSubscriptionPlans }: { onShowSubscriptionPlan
               <div className="bg-secondary/20 rounded-lg p-3">
                 {/* Bibliothek Header */}
                 {libraryCategories.map((item) => (
-                  <div key={item.title} className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2 text-muted-foreground opacity-70 cursor-not-allowed">
+                  <div 
+                    key={item.title} 
+                    className={`flex items-center justify-between mb-4 cursor-pointer hover:bg-secondary/30 p-2 rounded-md transition-colors ${
+                      location.pathname === item.url ? 'bg-secondary/50' : ''
+                    }`}
+                    onClick={() => navigate(item.url)}
+                  >
+                    <div className="flex items-center gap-2 text-foreground">
                       <item.icon className="h-5 w-5" />
                       <span className="font-medium">{item.title}</span>
                     </div>
-                    <Plus className="h-4 w-4 text-muted-foreground opacity-70" />
+                    <Plus className="h-4 w-4 text-muted-foreground" />
                   </div>
                 ))}
                 
@@ -117,8 +126,19 @@ export function AppSidebar({ onShowSubscriptionPlans }: { onShowSubscriptionPlan
                 <div className="space-y-1">
                   {quickLinks.map((item) => (
                     <div 
-                      key={item.title} 
-                      className="flex items-center gap-3 p-2 rounded-md text-muted-foreground opacity-70 hover:opacity-100 transition-opacity cursor-not-allowed"
+                      key={item.title}
+                      className={`flex items-center gap-3 p-2 rounded-md transition-colors ${
+                        item.soon 
+                          ? 'text-muted-foreground/50 cursor-not-allowed' 
+                          : `cursor-pointer hover:bg-secondary/30 ${
+                              location.pathname === item.url ? 'bg-secondary/50 text-foreground' : 'text-muted-foreground hover:text-foreground'
+                            }`
+                      }`}
+                      onClick={() => {
+                        if (!item.soon && item.url) {
+                          navigate(item.url);
+                        }
+                      }}
                     >
                       <div className="h-8 w-8 flex items-center justify-center bg-secondary/50 rounded">
                         <item.icon className="h-4 w-4" />
