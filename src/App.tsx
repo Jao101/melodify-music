@@ -12,6 +12,7 @@ import LikedSongs from "./pages/LikedSongs";
 import NotFound from "./pages/NotFound";
 import SubscriptionSuccess from "./pages/SubscriptionSuccess";
 import SubscriptionCancel from "./pages/SubscriptionCancel";
+import MyUploads from "./pages/MyUploads";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +62,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <SubscriptionCancel />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/my-uploads" 
+              element={
+                <ProtectedRoute>
+                  <MyUploads />
                 </ProtectedRoute>
               } 
             />

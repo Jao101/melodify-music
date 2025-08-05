@@ -1,4 +1,4 @@
-import { Home, Music, ChevronRight, Search, Library, Heart, Plus, Download, Compass, Clock, Globe } from "lucide-react";
+import { Home, Music, ChevronRight, Search, Library, Heart, Plus, Download, Compass, Clock, Globe, Upload } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -16,6 +16,7 @@ import { UserProfileMenu } from "@/components/profile/UserProfileMenu";
 // Spotify-typische Navigationsstruktur
 const mainNavItems = [
   { title: "Home", url: "/", icon: Home },
+  { title: "My Uploads", url: "/my-uploads", icon: Upload },
 ];
 
 // Platzhalter für zukünftige Funktionen
