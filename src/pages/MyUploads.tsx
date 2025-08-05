@@ -22,6 +22,7 @@ export default function MyUploads() {
   const [loading, setLoading] = useState(true);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
   // Track metadata for upload
   const [trackTitle, setTrackTitle] = useState("");
@@ -59,11 +60,37 @@ export default function MyUploads() {
     fetchUserTracks();
   }, [user]);
 
-  const handleFileUpload = async (file: File) => {
-    if (!user || !trackTitle || !trackArtist) {
+  // Handle file selection and auto-fill title
+  const handleFileSelect = (file: File) => {
+    setSelectedFile(file);
+    
+    // Auto-fill title from filename (remove extension and clean up)
+    const fileName = file.name;
+    const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
+    
+    // Clean up filename: replace underscores/dashes with spaces, capitalize
+    const cleanTitle = nameWithoutExt
+      .replace(/[-_]/g, ' ')
+      .replace(/\b\w/g, l => l.toUpperCase())
+      .trim();
+    
+    setTrackTitle(cleanTitle);
+    
+    // Try to extract artist from filename if it contains " - "
+    if (cleanTitle.includes(' - ')) {
+      const parts = cleanTitle.split(' - ');
+      if (parts.length >= 2) {
+        setTrackArtist(parts[0].trim());
+        setTrackTitle(parts[1].trim());
+      }
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!user || !selectedFile || !trackTitle || !trackArtist) {
       toast({
         title: "Fehler",
-        description: "Bitte fülle Titel und Künstler aus",
+        description: "Bitte fülle Titel und Künstler aus und wähle eine Datei",
         variant: "destructive",
       });
       return;
@@ -73,10 +100,10 @@ export default function MyUploads() {
     
     try {
       // Upload audio file
-      const audioFileName = `${user.id}/${Date.now()}-${file.name}`;
+      const audioFileName = `${user.id}/${Date.now()}-${selectedFile.name}`;
       const { data: audioData, error: audioError } = await supabase.storage
         .from('user-songs')
-        .upload(audioFileName, file);
+        .upload(audioFileName, selectedFile);
 
       if (audioError) throw audioError;
 
@@ -114,6 +141,7 @@ export default function MyUploads() {
       setTrackArtist("");
       setTrackAlbum("");
       setTrackGenre("");
+      setSelectedFile(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -210,28 +238,51 @@ export default function MyUploads() {
             />
           </div>
           
-          <div className="flex items-center gap-4">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="audio/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFileUpload(file);
-              }}
-              className="hidden"
-            />
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="flex items-center gap-2"
-            >
-              <Music className="h-4 w-4" />
-              {uploading ? "Uploading..." : "Audio-Datei auswählen"}
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Unterstützte Formate: MP3, WAV, FLAC, OGG
-            </span>
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileSelect(file);
+                }}
+                className="hidden"
+              />
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Music className="h-4 w-4" />
+                {selectedFile ? selectedFile.name : "Audio-Datei auswählen"}
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Unterstützte Formate: MP3, WAV, FLAC, OGG
+              </span>
+            </div>
+            
+            {selectedFile && (
+              <div className="flex items-center gap-4 p-4 bg-secondary/20 rounded-lg">
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Ausgewählte Datei:</p>
+                  <p className="text-sm text-muted-foreground">{selectedFile.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+                <Button
+                  onClick={handleUpload}
+                  disabled={uploading || !trackTitle || !trackArtist}
+                  className="flex items-center gap-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  {uploading ? "Uploading..." : "Song hochladen"}
+                </Button>
+              </div>
+            )}
           </div>
         </Card>
       </div>
