@@ -6,12 +6,15 @@ import { Card } from "@/components/ui/card";
 import { useLikedTracks } from "@/hooks/useLikedTracks";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import CreatePlaylistDialog from "@/components/playlists/CreatePlaylistDialog";
+import { useUserPlaylists } from "@/hooks/useUserPlaylists";
 
 export default function Library() {
   const [searchTerm, setSearchTerm] = useState("");
   const { likedTracks, loading: likedLoading } = useLikedTracks();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { playlists, loading: playlistsLoading, refetch: refetchPlaylists } = useUserPlaylists();
 
   // Playlist categories - only show actual playlists, no direct songs
   const playlistCategories = [
@@ -107,14 +110,7 @@ export default function Library() {
           </div>
           
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              className="rounded-full"
-              disabled
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
+            <CreatePlaylistDialog mode="icon" onCreated={refetchPlaylists} />
           </div>
         </div>
 
@@ -190,20 +186,33 @@ export default function Library() {
 
         {/* Create Playlist Section */}
         <div className="mt-8 pt-6 border-t border-border">
-          <h2 className="text-xl font-semibold mb-4">Create Your First Playlist</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Card className="music-card p-6 border-dashed border-2 border-muted-foreground/30 hover:border-primary/50 transition-colors cursor-pointer opacity-50">
-              <div className="text-center space-y-3">
-                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mx-auto">
-                  <Plus className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-muted-foreground">Create Playlist</h3>
-                  <p className="text-sm text-muted-foreground">Coming soon</p>
-                </div>
-              </div>
-            </Card>
-          </div>
+          <h2 className="text-xl font-semibold mb-4">Deine Playlists</h2>
+          {playlistsLoading ? (
+            <p className="text-muted-foreground">Lade Playlists...</p>
+          ) : playlists.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {playlists.map((pl) => (
+                <Card key={pl.id} className="music-card p-6 cursor-pointer transition-all duration-300 hover:scale-[1.02]">
+                  <div className="space-y-3">
+                    <div className="h-32 w-full rounded-lg bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center mb-2">
+                      <Music className="h-10 w-10 text-foreground/80" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground">{pl.name}</h3>
+                      {pl.description && (
+                        <p className="text-sm text-muted-foreground mt-1">{pl.description}</p>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center p-8 border border-dashed rounded-lg">
+              <p className="text-muted-foreground mb-4">Du hast noch keine Playlists.</p>
+              <CreatePlaylistDialog mode="button" onCreated={refetchPlaylists} />
+            </div>
+          )}
         </div>
       </div>
     </div>
