@@ -1,76 +1,71 @@
 import { useState } from "react";
-import { Heart, Clock, Music, Search, Grid, List, ArrowLeft } from "lucide-react";
+import { Heart, Clock, Music, Search, Grid, List, ArrowLeft, Plus, Compass, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { TrackCard } from "@/components/music/TrackCard";
-import { MusicPlayer } from "@/components/music/MusicPlayer";
-import { LikeButton } from "@/components/music/LikeButton";
-import { useTracks } from "@/hooks/useTracks";
 import { useLikedTracks } from "@/hooks/useLikedTracks";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 export default function Library() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("list");
-  const [currentTrack, setCurrentTrack] = useState<any>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [volume, setVolume] = useState(75);
-
-  const { tracks, loading: tracksLoading } = useTracks();
   const { likedTracks, loading: likedLoading } = useLikedTracks();
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const filteredTracks = tracks.filter(track =>
-    track.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    track.artist.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (track.album && track.album.toLowerCase().includes(searchTerm.toLowerCase()))
+  // Playlist categories - only show actual playlists, no direct songs
+  const playlistCategories = [
+    {
+      id: 'liked-songs',
+      title: "Liked Songs",
+      description: `${likedTracks.length} songs`,
+      icon: Heart,
+      url: "/liked-songs",
+      gradient: "from-purple-500 to-pink-500",
+      available: true
+    },
+    {
+      id: 'recently-played',
+      title: "Recently Played",
+      description: "Your recent listening history",
+      icon: Clock,
+      url: "/recently-played",
+      gradient: "from-green-500 to-blue-500",
+      available: false
+    },
+    {
+      id: 'ai-generated',
+      title: "AI Generated",
+      description: "Your AI-created songs",
+      icon: Music,
+      url: "/ai-generated",
+      gradient: "from-orange-500 to-red-500",
+      available: false
+    },
+    {
+      id: 'discover-weekly',
+      title: "Discover Weekly",
+      description: "Your personalized playlist",
+      icon: Compass,
+      url: "/discover-weekly",
+      gradient: "from-indigo-500 to-purple-500",
+      available: false
+    },
+    {
+      id: 'top-charts',
+      title: "Top Charts",
+      description: "Popular songs this week",
+      icon: Globe,
+      url: "/top-charts",
+      gradient: "from-yellow-500 to-orange-500",
+      available: false
+    }
+  ];
+
+  const filteredPlaylists = playlistCategories.filter(playlist =>
+    playlist.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    playlist.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const handleTrackPlay = (track: any) => {
-    if (currentTrack?.id === track.id) {
-      setIsPlaying(!isPlaying);
-    } else {
-      setCurrentTrack(track);
-      setIsPlaying(true);
-      setCurrentTime(0);
-    }
-  };
-
-  const handlePlayPause = () => {
-    setIsPlaying(!isPlaying);
-  };
-
-  const handleNext = () => {
-    if (!currentTrack) return;
-    const currentIndex = filteredTracks.findIndex(t => t.id === currentTrack.id);
-    const nextTrack = filteredTracks[currentIndex + 1];
-    if (nextTrack) {
-      setCurrentTrack(nextTrack);
-      setCurrentTime(0);
-    }
-  };
-
-  const handlePrevious = () => {
-    if (!currentTrack) return;
-    const currentIndex = filteredTracks.findIndex(t => t.id === currentTrack.id);
-    const prevTrack = filteredTracks[currentIndex - 1];
-    if (prevTrack) {
-      setCurrentTrack(prevTrack);
-      setCurrentTime(0);
-    }
-  };
-
-  const handleSeek = (time: number) => {
-    setCurrentTime(time);
-  };
-
-  const handleVolumeChange = (newVolume: number) => {
-    setVolume(newVolume);
-  };
 
   if (!user) {
     return (
@@ -106,25 +101,19 @@ export default function Library() {
             <div>
               <h1 className="text-3xl font-bold text-foreground">Your Library</h1>
               <p className="text-muted-foreground mt-1">
-                {filteredTracks.length} songs available
+                Your playlists and collections
               </p>
             </div>
           </div>
           
           <div className="flex items-center gap-2">
             <Button
-              variant={viewMode === "list" ? "default" : "outline"}
+              variant="outline"
               size="icon"
-              onClick={() => setViewMode("list")}
+              className="rounded-full"
+              disabled
             >
-              <List className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === "grid" ? "default" : "outline"}
-              size="icon"
-              onClick={() => setViewMode("grid")}
-            >
-              <Grid className="h-4 w-4" />
+              <Plus className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -133,122 +122,90 @@ export default function Library() {
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search your library..."
+            placeholder="Search in your library..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-background"
+            className="pl-10 bg-background/50 backdrop-blur-sm"
           />
         </div>
       </div>
 
-      {/* Quick Access Cards */}
-      <div className="px-6 pb-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Card 
-            className="music-card p-4 cursor-pointer hover:bg-secondary/50 transition-colors"
-            onClick={() => navigate('/liked-songs')}
-          >
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-md flex items-center justify-center">
-                <Heart className="h-6 w-6 text-white fill-current" />
-              </div>
-              <div>
-                <h3 className="font-semibold">Liked Songs</h3>
-                <p className="text-sm text-muted-foreground">
-                  {likedTracks.length} songs
-                </p>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="music-card p-4 cursor-pointer hover:bg-secondary/50 transition-colors opacity-50">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 bg-gradient-to-br from-green-500 to-blue-500 rounded-md flex items-center justify-center">
-                <Clock className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h3 className="font-semibold">Recently Played</h3>
-                <p className="text-sm text-muted-foreground">Coming soon</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="music-card p-4 cursor-pointer hover:bg-secondary/50 transition-colors opacity-50">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-md flex items-center justify-center">
-                <Music className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h3 className="font-semibold">AI Generated</h3>
-                <p className="text-sm text-muted-foreground">Coming soon</p>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </div>
-
-      {/* Tracks List */}
-      <div className="flex-1 px-6 pb-24 overflow-auto">
-        <div className="space-y-2">
-          {tracksLoading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-              <p className="text-muted-foreground">Loading tracks...</p>
-            </div>
-          ) : filteredTracks.length === 0 ? (
-            <div className="text-center py-12">
-              <Music className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No tracks found</h3>
-              <p className="text-muted-foreground">
-                {searchTerm ? 'Try adjusting your search terms' : 'No tracks available in the library'}
-              </p>
-            </div>
-          ) : (
-            filteredTracks.map((track) => (
-              <div key={track.id} className="flex items-center gap-2">
-                <div className="flex-1">
-                  <TrackCard
-                    track={{
-                      id: track.id,
-                      title: track.title,
-                      artist: track.artist,
-                      album: track.album || 'Unknown Album',
-                      duration: track.duration,
-                      imageUrl: track.image_url,
-                      isAI: track.is_ai_generated
-                    }}
-                    isPlaying={isPlaying}
-                    isCurrentTrack={currentTrack?.id === track.id}
-                    onPlay={() => handleTrackPlay(track)}
-                  />
+      {/* Playlists Grid */}
+      <div className="flex-1 px-6 pb-6 overflow-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filteredPlaylists.map((playlist) => {
+            const Icon = playlist.icon;
+            
+            return (
+              <Card 
+                key={playlist.id}
+                className={`music-card group cursor-pointer transition-all duration-300 hover:scale-[1.02] ${
+                  !playlist.available ? 'opacity-60' : ''
+                }`}
+                onClick={() => {
+                  if (playlist.available) {
+                    navigate(playlist.url);
+                  }
+                }}
+              >
+                <div className="p-6">
+                  {/* Playlist Cover */}
+                  <div className={`h-32 w-full rounded-lg bg-gradient-to-br ${playlist.gradient} flex items-center justify-center mb-4 group-hover:shadow-lg transition-shadow`}>
+                    <Icon className="h-12 w-12 text-white" />
+                  </div>
+                  
+                  {/* Playlist Info */}
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                      {playlist.title}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {playlist.description}
+                    </p>
+                    
+                    {!playlist.available && (
+                      <div className="flex items-center gap-1 mt-2">
+                        <span className="text-xs bg-secondary/70 px-2 py-1 rounded-full text-muted-foreground">
+                          Coming Soon
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <LikeButton trackId={track.id} />
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Empty State */}
+        {filteredPlaylists.length === 0 && (
+          <div className="text-center py-12">
+            <Music className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-xl font-semibold mb-2">No playlists found</h3>
+            <p className="text-muted-foreground">
+              {searchTerm ? 'Try adjusting your search terms' : 'Start by liking some songs to create your first playlist'}
+            </p>
+          </div>
+        )}
+
+        {/* Create Playlist Section */}
+        <div className="mt-8 pt-6 border-t border-border">
+          <h2 className="text-xl font-semibold mb-4">Create Your First Playlist</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card className="music-card p-6 border-dashed border-2 border-muted-foreground/30 hover:border-primary/50 transition-colors cursor-pointer opacity-50">
+              <div className="text-center space-y-3">
+                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mx-auto">
+                  <Plus className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-muted-foreground">Create Playlist</h3>
+                  <p className="text-sm text-muted-foreground">Coming soon</p>
+                </div>
               </div>
-            ))
-          )}
+            </Card>
+          </div>
         </div>
       </div>
-
-      {/* Music Player */}
-      <MusicPlayer
-        currentTrack={currentTrack ? {
-          id: currentTrack.id,
-          title: currentTrack.title,
-          artist: currentTrack.artist,
-          album: currentTrack.album || 'Unknown Album',
-          duration: currentTrack.duration,
-          audioUrl: currentTrack.audio_url,
-          imageUrl: currentTrack.image_url
-        } : undefined}
-        isPlaying={isPlaying}
-        onPlayPause={handlePlayPause}
-        onNext={handleNext}
-        onPrevious={handlePrevious}
-        onSeek={handleSeek}
-        currentTime={currentTime}
-        volume={volume}
-        onVolumeChange={handleVolumeChange}
-      />
     </div>
   );
 }
