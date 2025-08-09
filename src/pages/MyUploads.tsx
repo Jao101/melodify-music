@@ -10,6 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Track } from "@/hooks/useTracks";
 import { TrackCard } from "@/components/music/TrackCard";
 import { MusicPlayer } from "@/components/music/MusicPlayer";
+import AddToPlaylistDialog from "@/components/playlists/AddToPlaylistDialog";
+import { ListPlus } from "lucide-react";
 
 export default function MyUploads() {
   const navigate = useNavigate();
@@ -320,6 +322,19 @@ export default function MyUploads() {
                   }}
                   isCurrentTrack={currentTrack?.id === track.id}
                   isPlaying={isPlaying && currentTrack?.id === track.id}
+                />
+                <AddToPlaylistDialog
+                  trackId={track.id}
+                  trigger={
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="absolute top-2 right-12 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8"
+                      title="Zur Playlist hinzufügen"
+                    >
+                      <ListPlus className="h-4 w-4" />
+                    </Button>
+                  }
                 />
                 <Button
                   variant="destructive"
