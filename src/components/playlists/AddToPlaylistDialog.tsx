@@ -45,8 +45,9 @@ export default function AddToPlaylistDialog({ trackId, onAdded, trigger, classNa
       }
       setOpen(false);
       onAdded?.();
-    } catch (e: any) {
-      toast({ title: "Fehler", description: e.message, variant: "destructive" });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast({ title: "Fehler", description: message, variant: "destructive" });
     }
   };
 

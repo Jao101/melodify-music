@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Track } from './useTracks';
@@ -13,36 +13,37 @@ export function useUserTracks() {
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(75);
 
-  useEffect(() => {
-    if (user) {
-      fetchUserTracks();
-    }
-  }, [user]);
-
-  const fetchUserTracks = async () => {
+  const fetchUserTracks = useCallback(async () => {
     if (!user) return;
     
     try {
       setLoading(true);
       setError(null);
 
-      const { data, error } = await supabase
+      const { data, error: dbError } = await supabase
         .from('tracks')
         .select('*')
         .eq('generated_by', user.id)
         .eq('user_uploaded', true)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (dbError) throw dbError;
 
       setTracks(data || []);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
       console.error('Error fetching user tracks:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchUserTracks();
+    }
+  }, [user, fetchUserTracks]);
 
   const playTrack = (track: Track) => {
     setCurrentTrack(track);

@@ -1,23 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import type { Tables } from '@/integrations/supabase/types';
 
-export interface Track {
-  id: string;
-  title: string;
-  artist: string;
-  album: string | null;
-  genre: string | null;
-  duration: number;
-  audio_url: string | null;
-  image_url: string | null;
-  lyrics: string | null;
-  is_ai_generated: boolean;
-  generated_by: string | null;
-  created_at: string;
-  updated_at: string;
-  metadata: any;
-}
+export type Track = Tables<'tracks'>
 
 export function useTracks() {
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -34,16 +20,17 @@ export function useTracks() {
       setLoading(true);
       setError(null);
 
-      const { data, error } = await supabase
+      const { data, error: dbError } = await supabase
         .from('tracks')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (dbError) throw dbError;
 
       setTracks(data || []);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
       console.error('Error fetching tracks:', err);
     } finally {
       setLoading(false);

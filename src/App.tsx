@@ -13,6 +13,7 @@ import NotFound from "./pages/NotFound";
 import SubscriptionSuccess from "./pages/SubscriptionSuccess";
 import SubscriptionCancel from "./pages/SubscriptionCancel";
 import MyUploads from "./pages/MyUploads";
+import Playlist from "./pages/Playlist";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +71,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <MyUploads />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/playlists/:id" 
+              element={
+                <ProtectedRoute>
+                  <Playlist />
                 </ProtectedRoute>
               } 
             />

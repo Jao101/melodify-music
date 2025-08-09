@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Track } from './useTracks';
@@ -18,17 +18,7 @@ export function useLikedTracks() {
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
 
-  useEffect(() => {
-    if (user) {
-      fetchLikedTracks();
-    } else {
-      setLikedTracks([]);
-      setLikedTrackIds(new Set());
-      setLoading(false);
-    }
-  }, [user]);
-
-  const fetchLikedTracks = async () => {
+  const fetchLikedTracks = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -49,13 +39,25 @@ export function useLikedTracks() {
       const tracks = data || [];
       setLikedTracks(tracks);
       setLikedTrackIds(new Set(tracks.map(lt => lt.track_id)));
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
       console.error('Error fetching liked tracks:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchLikedTracks();
+    } else {
+      setLikedTracks([]);
+      setLikedTrackIds(new Set());
+      setLoading(false);
+    }
+  }, [user, fetchLikedTracks]);
+
 
   const toggleLike = async (trackId: string) => {
     if (!user) return;
@@ -100,8 +102,9 @@ export function useLikedTracks() {
           setLikedTrackIds(prev => new Set([...prev, trackId]));
         }
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
       console.error('Error toggling like:', err);
     }
   };

@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 interface UserProfileEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  profile: any;
+  profile: { id: string; display_name?: string | null; bio?: string | null; avatar_url?: string | null } | null;
 }
 
 export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfileEditDialogProps) {
@@ -111,7 +111,12 @@ export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfi
       setLoading(true);
       
       // Prepare update data
-      const updateData: Record<string, any> = {
+      const updateData: {
+        display_name: string;
+        bio: string;
+        avatar_url: string | null;
+        updated_at: string;
+      } = {
         display_name: formData.display_name,
         bio: formData.bio,
         avatar_url: avatarUrl,
@@ -134,9 +139,10 @@ export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfi
       
       toast.success('Profile updated successfully');
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating profile:', error);
-      toast.error(`Failed to update profile: ${error.message || 'Unknown error'}`);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to update profile: ${message}`);
     } finally {
       setLoading(false);
     }

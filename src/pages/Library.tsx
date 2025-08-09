@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Heart, Clock, Music, Search, Grid, List, ArrowLeft, Plus, Compass, Globe } from "lucide-react";
+import { Heart, Clock, Music, Search, Grid, List, ArrowLeft, Plus, Compass, Globe, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -8,6 +8,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import CreatePlaylistDialog from "@/components/playlists/CreatePlaylistDialog";
 import { useUserPlaylists } from "@/hooks/useUserPlaylists";
+import { deletePlaylist } from "@/services/playlistService";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function Library() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -15,6 +17,7 @@ export default function Library() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { playlists, loading: playlistsLoading, refetch: refetchPlaylists } = useUserPlaylists();
+  const { toast } = useToast();
 
   // Playlist categories - only show actual playlists, no direct songs
   const playlistCategories = [
@@ -192,7 +195,7 @@ export default function Library() {
           ) : playlists.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {playlists.map((pl) => (
-                <Card key={pl.id} className="music-card p-6 cursor-pointer transition-all duration-300 hover:scale-[1.02]">
+                <Card key={pl.id} className="music-card p-6 cursor-pointer transition-all duration-300 hover:scale-[1.02]" onClick={() => navigate(`/playlists/${pl.id}`)}>
                   <div className="space-y-3">
                     <div className="h-32 w-full rounded-lg bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center mb-2">
                       <Music className="h-10 w-10 text-foreground/80" />
@@ -202,6 +205,27 @@ export default function Library() {
                       {pl.description && (
                         <p className="text-sm text-muted-foreground mt-1">{pl.description}</p>
                       )}
+                      <div className="flex gap-2 mt-3">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const confirmed = window.confirm(`Playlist "${pl.name}" löschen? Diese Aktion kann nicht rückgängig gemacht werden.`);
+                            if (!confirmed) return;
+                            try {
+                              await deletePlaylist(pl.id);
+                              toast({ title: "Gelöscht", description: `"${pl.name}" wurde gelöscht.`});
+                              await refetchPlaylists();
+                            } catch (err: unknown) {
+                              const msg = err instanceof Error ? err.message : String(err);
+                              toast({ title: "Fehler beim Löschen", description: msg, variant: "destructive" });
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" /> Löschen
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </Card>
