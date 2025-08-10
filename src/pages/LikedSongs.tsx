@@ -3,8 +3,8 @@ import { Heart, Search, ArrowLeft, Play, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TrackCard } from "@/components/music/TrackCard";
-import { MusicPlayer } from "@/components/music/MusicPlayer";
 import { LikeButton } from "@/components/music/LikeButton";
+import { MetadataEnhancerButton } from "@/components/music/MetadataEnhancerButton";
 import { useLikedTracks } from "@/hooks/useLikedTracks";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -49,11 +49,10 @@ export default function LikedSongs() {
       } catch {
         // ignore resume errors
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  })();
   }, []);
 
-  const { likedTracks, loading } = useLikedTracks();
+  const { likedTracks, loading, refetch } = useLikedTracks();
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -168,6 +167,16 @@ export default function LikedSongs() {
             <Shuffle className="h-5 w-5 mr-2" />
             Shuffle
           </Button>
+          
+          <MetadataEnhancerButton
+            tracks={filteredTracks.map(lt => ({
+              id: lt.track.id,
+              title: lt.track.title || 'Unknown Track',
+              artist: lt.track.artist,
+              album: lt.track.album
+            }))}
+            onUpdateTracks={refetch}
+          />
         </div>
       )}
 
@@ -228,26 +237,7 @@ export default function LikedSongs() {
         </div>
       </div>
 
-      {/* Music Player */}
-      <MusicPlayer
-        currentTrack={currentTrack ? {
-          id: currentTrack.id,
-          title: currentTrack.title,
-          artist: currentTrack.artist,
-          album: currentTrack.album || 'Unknown Album',
-          duration: duration || currentTrack.duration || 0,
-          audioUrl: currentTrack.audio_url || undefined,
-          imageUrl: currentTrack.image_url || undefined
-        } : undefined}
-        isPlaying={isPlaying}
-        onPlayPause={handlePlayPause}
-        onNext={handleNext}
-        onPrevious={handlePrevious}
-        onSeek={handleSeek}
-        currentTime={currentTime}
-        volume={volume}
-        onVolumeChange={handleVolumeChange}
-      />
+  {/* Global MusicPlayer is rendered in App.tsx */}
     </div>
   );
 }

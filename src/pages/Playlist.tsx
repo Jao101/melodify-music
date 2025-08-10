@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, Music, Play, Trash2, Shuffle } from "lucide-react";
 import { deletePlaylist } from "@/services/playlistService";
 import { useToast } from "@/hooks/use-toast";
-import { isPlayableTrack } from "@/hooks/useAudioPlayer";
+import { isPlayableTrack, useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { usePlaylist } from "@/hooks/usePlaylist";
 import { usePlaylistTracks } from "@/hooks/usePlaylistTracks";
 import { TrackCard } from "@/components/music/TrackCard";
@@ -44,6 +44,10 @@ export default function Playlist() {
         .toLowerCase()
         .includes(search.toLowerCase())
     );
+
+  // Player controls
+  const { currentTrack, isPlaying, currentTime, duration, volume, setVolume, play, togglePlayPause, next, previous, seek } = useAudioPlayer();
+  const queue = filtered.map((pt) => pt.track);
 
   const handleRemoveTrack = async (trackId: string) => {
     if (!id || !isOwner) return;
@@ -93,6 +97,10 @@ export default function Playlist() {
             <Button 
               className="rounded-full h-10 px-5 focus-visible:ring-2 focus-visible:ring-primary" 
               disabled={filtered.length === 0}
+              onClick={() => {
+                if (queue.length === 0) return;
+                void play(queue[0] as any, queue as any);
+              }}
               aria-label="Alle Titel abspielen"
             >
               <Play className="h-4 w-4 mr-2" /> Play All
@@ -101,6 +109,11 @@ export default function Playlist() {
               variant="outline" 
               className="rounded-full h-10 px-5 focus-visible:ring-2 focus-visible:ring-primary" 
               disabled={filtered.length === 0}
+              onClick={() => {
+                if (queue.length === 0) return;
+                const shuffled = [...queue].sort(() => Math.random() - 0.5);
+                void play(shuffled[0] as any, shuffled as any);
+              }}
               aria-label="Zufällige Wiedergabe"
             >
               <Shuffle className="h-4 w-4 mr-2" /> Shuffle
@@ -176,8 +189,12 @@ export default function Playlist() {
                   imageUrl: pt.track.image_url || undefined,
                   isAI: pt.track.is_ai_generated || false
                 }}
+                isPlaying={isPlaying && currentTrack?.id === pt.track.id}
+                isCurrentTrack={currentTrack?.id === pt.track.id}
                 onPlay={() => {
-                  // TODO: Implement play functionality
+                  const idx = queue.findIndex((t) => t.id === pt.track.id);
+                  const ordered = idx > -1 ? queue.slice(idx).concat(queue.slice(0, idx)) : queue;
+                  void play(pt.track as any, ordered as any);
                 }}
                 onRemove={() => handleRemoveTrack(pt.track.id)}
                 showRemove={isOwner}
@@ -186,6 +203,7 @@ export default function Playlist() {
           </div>
         )}
       </div>
+  {/* Global MusicPlayer is rendered once in App.tsx */}
     </div>
   );
 }

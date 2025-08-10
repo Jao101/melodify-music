@@ -10,12 +10,75 @@ import Auth from "./pages/Auth";
 import Library from "./pages/Library";
 import LikedSongs from "./pages/LikedSongs";
 import NotFound from "./pages/NotFound";
-import SubscriptionSuccess from "./pages/SubscriptionSuccess";
-import SubscriptionCancel from "./pages/SubscriptionCancel";
 import MyUploads from "./pages/MyUploads";
 import Playlist from "./pages/Playlist";
+import { AudioPlayerProvider, useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { MusicPlayer } from "@/components/music/MusicPlayer";
+import { useAuth } from "@/contexts/AuthContext";
+import { useState, useEffect } from "react";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+
+// Import test function for debugging
+import "@/utils/testMusicBrainz";
 
 const queryClient = new QueryClient();
+
+function GlobalPlayer() {
+  const { user, loading } = useAuth();
+  const { currentTrack, isPlaying, currentTime, duration, volume, setVolume, togglePlayPause, next, previous, seek } = useAudioPlayer();
+  
+  // Update document title based on playback state
+  useDocumentTitle({ 
+    currentTrack: currentTrack ? {
+      title: currentTrack.title || 'Unknown Track',
+      artist: currentTrack.artist || 'Unknown Artist'
+    } : null,
+    isPlaying 
+  });
+  
+  // Only show player if user is logged in AND auth loading is complete
+  // Also wait a bit after login to avoid showing during success message
+  const [showPlayer, setShowPlayer] = useState(false);
+  
+  useEffect(() => {
+    if (!user || loading) {
+      setShowPlayer(false);
+      return;
+    }
+    
+    // Small delay to ensure success message is shown first
+    const timer = setTimeout(() => {
+      setShowPlayer(true);
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, [user, loading]);
+  
+  if (!showPlayer) return null;
+  
+  const props = {
+    currentTrack: currentTrack
+      ? {
+          id: currentTrack.id,
+          title: currentTrack.title || '',
+          artist: currentTrack.artist || '',
+          album: currentTrack.album || '',
+          duration: duration || currentTrack.duration || 0,
+          audioUrl: currentTrack.audio_url || undefined,
+          imageUrl: currentTrack.image_url || undefined,
+        }
+      : undefined,
+    isPlaying: isPlaying,
+    onPlayPause: () => void togglePlayPause(),
+    onNext: () => next(),
+    onPrevious: () => previous(),
+    onSeek: (t: number) => seek(t),
+    currentTime,
+    volume,
+    onVolumeChange: setVolume,
+  } as const;
+  return <MusicPlayer {...(props as any)} />;
+}
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -24,7 +87,8 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
+          <AudioPlayerProvider>
+            <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route 
               path="/" 
@@ -51,22 +115,6 @@ const App = () => (
               } 
             />
             <Route 
-              path="/subscription-success" 
-              element={
-                <ProtectedRoute>
-                  <SubscriptionSuccess />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/subscription-cancel" 
-              element={
-                <ProtectedRoute>
-                  <SubscriptionCancel />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
               path="/my-uploads" 
               element={
                 <ProtectedRoute>
@@ -84,7 +132,9 @@ const App = () => (
             />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
-          </Routes>
+            </Routes>
+            <GlobalPlayer />
+          </AudioPlayerProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

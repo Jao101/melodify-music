@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { Upload, Music, ArrowLeft, Trash2, Edit } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Upload, Music, ArrowLeft, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -9,11 +9,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Track } from "@/hooks/useTracks";
 import { TrackCard } from "@/components/music/TrackCard";
-import { MusicPlayer } from "@/components/music/MusicPlayer";
 import AddToPlaylistDialog from "@/components/playlists/AddToPlaylistDialog";
+import { MetadataEnhancerButton } from "@/components/music/MetadataEnhancerButton";
 import { ListPlus } from "lucide-react";
-import { usePlaybackSync } from "@/hooks/usePlaybackSync";
-import { getPlaybackState, upsertPlaybackState } from "@/services/playbackService";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { getUploadsPlaylistName } from "@/services/playlistService";
+import { ensureUploadsPlaylist, addTrackToPlaylist } from "@/services/playlistService";
+// removed duplicate import above
 
 export default function MyUploads() {
   const navigate = useNavigate();
@@ -26,21 +28,8 @@ export default function MyUploads() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [userTracks, setUserTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  // Audio player state
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [playerDuration, setPlayerDuration] = useState(0);
-  const [volume, setVolume] = useState(75);
-  // Refs to keep latest state in event listeners
-  const latestTrackRef = useRef<Track | null>(null);
-  const latestTracksRef = useRef<Track[]>([]);
-  const resumedRef = useRef<boolean>(false);
-
-  useEffect(() => { latestTrackRef.current = currentTrack; }, [currentTrack]);
-  useEffect(() => { latestTracksRef.current = userTracks; }, [userTracks]);
+  const { currentTrack, isPlaying, play, setQueue } = useAudioPlayer();
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   
   // Track metadata for upload
   const [trackTitle, setTrackTitle] = useState("");
@@ -49,7 +38,7 @@ export default function MyUploads() {
   const [trackGenre, setTrackGenre] = useState("");
 
   // Fetch user's uploaded tracks
-  const fetchUserTracks = async () => {
+  const fetchUserTracks = useCallback(async () => {
     if (!user) return;
     
     try {
@@ -71,196 +60,24 @@ export default function MyUploads() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast, user]);
 
   // Load tracks on mount
   useEffect(() => {
     fetchUserTracks();
-  }, [user]);
+  }, [fetchUserTracks]);
 
-  // Initialize and manage audio element (run once)
-  useEffect(() => {
-    const el = new Audio();
-    el.preload = 'metadata';
-    el.volume = volume / 100;
-
-    const onTime = () => setCurrentTime(el.currentTime);
-    const onLoaded = () => setPlayerDuration(Number.isFinite(el.duration) ? el.duration : 0);
-    const onEnded = () => {
-      const curr = latestTrackRef.current;
-      const list = latestTracksRef.current;
-      if (!curr || !list?.length) {
-        setIsPlaying(false);
-        setCurrentTime(0);
-        return;
-      }
-      const i = list.findIndex(t => t.id === curr.id);
-      const next = list[i + 1];
-      if (next) {
-        void handleTrackPlay(next);
-      } else {
-        setIsPlaying(false);
-        setCurrentTime(0);
-      }
-    };
-
-    el.addEventListener('timeupdate', onTime);
-    el.addEventListener('loadedmetadata', onLoaded);
-    el.addEventListener('ended', onEnded);
-    audioRef.current = el;
-
-    return () => {
-      el.removeEventListener('timeupdate', onTime);
-      el.removeEventListener('loadedmetadata', onLoaded);
-      el.removeEventListener('ended', onEnded);
-      el.pause();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Keep volume in sync
-  useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume / 100;
-  }, [volume]);
-
-  // Persist playback while playing (heartbeat)
-  usePlaybackSync({
-    trackId: currentTrack?.id,
-    positionSec: currentTime,
-    isPlaying,
-  });
-
-  // Save playback position on unmount (for paused state or last snapshot)
-  useEffect(() => {
-    return () => {
-      const track = latestTrackRef.current;
-      const pos = Math.floor(audioRef.current?.currentTime || currentTime || 0);
-      if (track) {
-        void upsertPlaybackState(track.id, pos).catch(() => {/* ignore */});
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Resume last playback (prime without autoplay) once tracks are loaded
-  useEffect(() => {
-    const tryResume = async () => {
-      if (resumedRef.current) return;
-      if (!userTracks.length) return;
-      try {
-        const state = await getPlaybackState();
-        if (!state?.track_id) {
-          resumedRef.current = true;
-          return;
-        }
-        const match = userTracks.find(t => t.id === state.track_id);
-        if (!match) {
-          resumedRef.current = true;
-          return;
-        }
-        const url = await resolvePlayableUrl(match);
-        if (!url) {
-          resumedRef.current = true;
-          return;
-        }
-        // Prime player
-        setCurrentTrack(match);
-        setIsPlaying(false);
-        setCurrentTime(Math.max(0, state.position || 0));
-        if (audioRef.current) {
-          audioRef.current.src = url;
-          try {
-            audioRef.current.currentTime = Math.max(0, state.position || 0);
-          } catch {
-            // some browsers require metadata loaded; timeupdate listener will correct
-          }
-        }
-      } catch (e) {
-        // ignore resume errors silently
-      } finally {
-        resumedRef.current = true;
-      }
-    };
-    void tryResume();
-  }, [userTracks]);
-
-  // Resolve a playable URL (signed for private bucket)
-  const resolvePlayableUrl = async (track: Track): Promise<string | null> => {
-    const anyTrack: any = track as any;
-    const storagePath: string | undefined = anyTrack?.metadata?.storage_path;
-    if (track.user_uploaded) {
-      let path = storagePath;
-      if (!path && track.audio_url) {
-        // Try to infer path from audio_url if it contains the bucket marker
-        const marker = '/user-songs/';
-        const idx = track.audio_url.indexOf(marker);
-        if (idx !== -1) {
-          path = track.audio_url.substring(idx + marker.length);
-        }
-      }
-      if (path) {
-        const { data, error } = await supabase.storage.from('user-songs').createSignedUrl(path, 60 * 60);
-        if (!error && data?.signedUrl) return data.signedUrl;
-        console.warn('Failed to create signed URL, falling back to audio_url', error);
-      }
-    }
-    return track.audio_url ?? null;
-  };
-
+  
   const handleTrackPlay = async (track: Track) => {
     try {
-      const url = await resolvePlayableUrl(track);
-      if (!url) {
-        toast({ title: 'Fehler', description: 'Keine Audio-URL für diesen Song gefunden.', variant: 'destructive' });
-        return;
-      }
-      setCurrentTrack(track);
-      setIsPlaying(true);
-      setCurrentTime(0);
-      if (audioRef.current) {
-        audioRef.current.src = url;
-        await audioRef.current.play();
-      }
+      setQueue(userTracks as any);
+      await play(track as any, userTracks as any);
     } catch (e: any) {
       toast({ title: 'Fehler', description: e?.message || String(e), variant: 'destructive' });
     }
   };
 
-  const handlePlayPause = async () => {
-    if (!audioRef.current || !currentTrack) return;
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      try {
-        await audioRef.current.play();
-        setIsPlaying(true);
-      } catch (e: any) {
-        toast({ title: 'Fehler', description: e?.message || String(e), variant: 'destructive' });
-      }
-    }
-  };
-
-  const handleSeek = (time: number) => {
-    if (!audioRef.current) return;
-    const target = Math.max(0, Math.min(time, playerDuration || time));
-    audioRef.current.currentTime = target;
-    setCurrentTime(target);
-  };
-
-  const handleNext = () => {
-    if (!currentTrack) return;
-    const i = userTracks.findIndex(t => t.id === currentTrack.id);
-    const next = userTracks[i + 1];
-    if (next) void handleTrackPlay(next);
-  };
-
-  const handlePrevious = () => {
-    if (!currentTrack) return;
-    const i = userTracks.findIndex(t => t.id === currentTrack.id);
-    const prev = userTracks[i - 1];
-    if (prev) void handleTrackPlay(prev);
-  };
+  // controls handled by global player at app root
 
   // Validate file
   const validateFile = (file: File): string | null => {
@@ -279,47 +96,62 @@ export default function MyUploads() {
   };
 
   // Handle file selection and auto-fill title
-  const handleFileSelect = (file: File) => {
-    const validationError = validateFile(file);
-    if (validationError) {
-      toast({
-        title: "Ungültige Datei",
-        description: validationError,
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    setSelectedFile(file);
-    setUploadError(null);
-    
-    // Auto-fill title from filename (remove extension and clean up)
-    const fileName = file.name;
-    const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
-    
-    // Clean up filename: replace underscores/dashes with spaces, capitalize
-    const cleanTitle = nameWithoutExt
-      .replace(/[-_]/g, ' ')
-      .replace(/\b\w/g, l => l.toUpperCase())
-      .trim();
-    
-    setTrackTitle(cleanTitle);
-    
-    // Try to extract artist from filename if it contains " - "
-    if (cleanTitle.includes(' - ')) {
-      const parts = cleanTitle.split(' - ');
-      if (parts.length >= 2) {
-        setTrackArtist(parts[0].trim());
-        setTrackTitle(parts[1].trim());
+  const handleFilesSelected = (filesLike: FileList | File[]) => {
+    const files = Array.from(filesLike);
+    const valid: File[] = [];
+    files.forEach((file) => {
+      const err = validateFile(file);
+      if (err) {
+        toast({ title: "Ungültige Datei", description: `${file.name}: ${err}` , variant: "destructive" });
+      } else {
+        valid.push(file);
       }
+    });
+    if (valid.length === 0) return;
+    setSelectedFiles(valid);
+    setUploadError(null);
+
+    // For single selection, keep auto-fill behavior
+    if (valid.length === 1) {
+      const file = valid[0];
+      const fileName = file.name;
+      const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
+      const cleanTitle = nameWithoutExt
+        .replace(/[-_]/g, ' ')
+        .replace(/\b\w/g, (l) => l.toUpperCase())
+        .trim();
+      setTrackTitle(cleanTitle);
+      if (cleanTitle.includes(' - ')) {
+        const parts = cleanTitle.split(' - ');
+        if (parts.length >= 2) {
+          setTrackArtist(parts[0].trim());
+          setTrackTitle(parts[1].trim());
+        }
+      }
+    } else {
+      // For multi, clear manual fields to avoid confusion
+      setTrackTitle("");
+      setTrackArtist("");
+      // album/genre optional — keep user-entered values to apply to all if provided
     }
   };
 
   const handleUpload = async () => {
-    if (!user || !selectedFile || !trackTitle || !trackArtist) {
+    if (!user) {
+      toast({ title: "Fehler", description: "Nicht angemeldet.", variant: "destructive" });
+      return;
+    }
+
+    if (selectedFiles.length === 0) {
+      toast({ title: "Fehler", description: "Bitte wähle mindestens eine Datei aus.", variant: "destructive" });
+      return;
+    }
+
+    // Single-file path preserves existing validation for title/artist
+    if (selectedFiles.length === 1 && (!trackTitle || !trackArtist)) {
       toast({
         title: "Fehler",
-        description: "Bitte fülle Titel und Künstler aus und wähle eine Datei",
+        description: "Bitte fülle Titel und Künstler aus oder wähle mehrere Dateien für Auto-Erkennung.",
         variant: "destructive",
       });
       return;
@@ -328,78 +160,105 @@ export default function MyUploads() {
     setUploading(true);
     setUploadProgress(0);
     setUploadError(null);
-    
-    try {
-      // Upload audio file with progress
-      const audioFileName = `${user.id}/${Date.now()}-${selectedFile.name}`;
-      setUploadProgress(25);
-      
-      const { data: audioData, error: audioError } = await supabase.storage
-        .from('user-songs')
-        .upload(audioFileName, selectedFile);
 
-      if (audioError) throw audioError;
-      setUploadProgress(50);
+    const total = selectedFiles.length;
+    let success = 0;
+    let failed = 0;
 
-      // Get public URL (may be inaccessible for private bucket) but also keep storage path
-      const { data: { publicUrl: audioUrl } } = supabase.storage
-        .from('user-songs')
-        .getPublicUrl(audioFileName);
-      
-      setUploadProgress(75);
-
-      // Create track entry in database
-    const { data: trackData, error: trackError } = await supabase
-        .from('tracks')
-        .insert({
-          title: trackTitle,
-          artist: trackArtist,
-          album: trackAlbum || null,
-          genre: trackGenre || null,
-          duration: 0, // We'll need to calculate this client-side or set it later
-      audio_url: audioUrl,
-          generated_by: user.id,
-          user_uploaded: true,
-      is_ai_generated: false,
-      metadata: { storage_path: audioFileName }
-        })
-        .select()
-        .single();
-
-      if (trackError) throw trackError;
-      setUploadProgress(100);
-
-      toast({
-        title: "Erfolg",
-        description: "Song wurde erfolgreich hochgeladen!",
-      });
-
-      // Reset form
-      setTrackTitle("");
-      setTrackArtist("");
-      setTrackAlbum("");
-      setTrackGenre("");
-      setSelectedFile(null);
-      setUploadProgress(0);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+  const uploadOne = async (file: File, index: number) => {
+      // Derive metadata per file if multi, or use manual for single
+      let title = trackTitle;
+      let artist = trackArtist;
+      if (total > 1) {
+        const base = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        const clean = base.replace(/[-_]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()).trim();
+        if (clean.includes(' - ')) {
+          const parts = clean.split(' - ');
+          if (parts.length >= 2) {
+            artist = parts[0].trim();
+            title = parts.slice(1).join(' - ').trim();
+          } else {
+            title = clean;
+            artist = artist || "Unknown Artist";
+          }
+        } else {
+          title = clean;
+          artist = artist || "Unknown Artist";
+        }
       }
 
-      // Refresh tracks list
-      fetchUserTracks();
+      try {
+        const audioFileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${file.name}`;
+        // Coarse overall progress: step through phases per file
+        setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 5)));
+        const { error: audioError } = await supabase.storage.from('user-songs').upload(audioFileName, file);
+        if (audioError) throw audioError;
 
-    } catch (error: any) {
-      const errorMessage = "Upload fehlgeschlagen: " + error.message;
-      setUploadError(errorMessage);
-      toast({
-        title: "Fehler",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
+        setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 30)));
+        const { data: { publicUrl: audioUrl } } = supabase.storage.from('user-songs').getPublicUrl(audioFileName);
+
+        setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 60)));
+        const { data: inserted, error: trackError } = await supabase
+          .from('tracks')
+          .insert({
+            title,
+            artist,
+            album: trackAlbum || null,
+            genre: trackGenre || null,
+            duration: 0,
+            audio_url: audioUrl,
+            generated_by: user.id,
+            user_uploaded: true,
+            is_ai_generated: false,
+            metadata: { storage_path: audioFileName },
+          })
+          .select('id')
+          .single();
+        if (trackError) throw trackError;
+
+        // Ensure uploads playlist exists and add the new track to it
+        try {
+          const pl = await ensureUploadsPlaylist(user.id);
+          await addTrackToPlaylist(pl.id, (inserted as any).id);
+        } catch (plErr) {
+          console.warn('Failed to attach track to uploads playlist', plErr);
+        }
+        success += 1;
+      } catch (e: any) {
+        failed += 1;
+        // Surface first failure immediately but continue
+        setUploadError(e?.message || String(e));
+      } finally {
+        setUploadProgress(Math.round(((index + 1) / total) * 100));
+      }
+    };
+
+    for (let i = 0; i < total; i++) {
+      // sequential to avoid rate limits
+      await uploadOne(selectedFiles[i], i);
     }
+
+    setUploadProgress(100);
+
+    if (success > 0) {
+      toast({ title: "Fertig", description: `${success} von ${total} Uploads erfolgreich${failed ? `, ${failed} fehlgeschlagen` : ''}.` });
+    } else {
+      toast({ title: "Fehler", description: `Alle Uploads fehlgeschlagen (${failed}/${total}).`, variant: "destructive" });
+    }
+
+    // Reset form
+    setTrackTitle("");
+    setTrackArtist("");
+    setTrackAlbum("");
+    setTrackGenre("");
+    setSelectedFiles([]);
+    setUploadProgress(0);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    // Refresh list
+    fetchUserTracks();
+
+    setUploading(false);
   };
 
   const retryUpload = () => {
@@ -433,7 +292,7 @@ export default function MyUploads() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground pb-24">
       {/* Header */}
       <div className="p-6 bg-gradient-to-b from-primary/10 to-background">
         <div className="flex items-center gap-4 mb-6">
@@ -446,7 +305,7 @@ export default function MyUploads() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">My Uploads</h1>
+            <h1 className="text-3xl font-bold text-foreground">{getUploadsPlaylistName()}</h1>
             <p className="text-muted-foreground mt-1">
               {userTracks.length} eigene Songs
             </p>
@@ -491,9 +350,10 @@ export default function MyUploads() {
                 ref={fileInputRef}
                 type="file"
                 accept="audio/mpeg,audio/wav,audio/flac,audio/ogg,audio/mp3"
+                multiple
                 onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFileSelect(file);
+                  const fl = e.target.files;
+                  if (fl && fl.length > 0) handleFilesSelected(fl);
                 }}
                 className="hidden"
               />
@@ -504,22 +364,44 @@ export default function MyUploads() {
                 className="flex items-center gap-2"
               >
                 <Music className="h-4 w-4" />
-                {selectedFile ? selectedFile.name : "Audio-Datei auswählen"}
+                {selectedFiles.length > 1
+                  ? `${selectedFiles.length} Dateien ausgewählt`
+                  : selectedFiles.length === 1
+                  ? selectedFiles[0].name
+                  : "Audio-Datei(s) auswählen"}
               </Button>
               <span className="text-sm text-muted-foreground">
                 Unterstützte Formate: MP3, WAV, FLAC, OGG
               </span>
             </div>
             
-            {selectedFile && (
+            {selectedFiles.length > 0 && (
               <div className="space-y-4 p-4 bg-secondary/20 rounded-lg">
                 <div className="flex items-center gap-4">
                   <div className="flex-1">
                     <p className="text-sm font-medium">Ausgewählte Datei:</p>
-                    <p className="text-sm text-muted-foreground">{selectedFile.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
+                    {selectedFiles.length === 1 ? (
+                      <>
+                        <p className="text-sm text-muted-foreground">{selectedFiles[0].name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(selectedFiles[0].size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </>
+                    ) : (
+                      <div className="max-h-40 overflow-auto mt-1 text-sm text-muted-foreground space-y-1">
+                        {selectedFiles.map((f, i) => (
+                          <div key={`${f.name}-${i}`} className="flex justify-between gap-2">
+                            <span className="truncate" title={f.name}>{f.name}</span>
+                            <span className="shrink-0">{(f.size / 1024 / 1024).toFixed(2)} MB</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {selectedFiles.length > 1 && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Hinweis: Bei Mehrfachauswahl werden Titel/Künstler aus den Dateinamen ermittelt (Schema: "Künstler - Titel").
+                      </p>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     {uploadError && (
@@ -534,12 +416,20 @@ export default function MyUploads() {
                     )}
                     <Button
                       onClick={handleUpload}
-                      disabled={uploading || !trackTitle || !trackArtist}
+                      disabled={
+                        uploading ||
+                        selectedFiles.length === 0 ||
+                        (selectedFiles.length === 1 && (!trackTitle || !trackArtist))
+                      }
                       className="flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-primary"
                       aria-label="Song hochladen"
                     >
                       <Upload className="h-4 w-4" />
-                      {uploading ? "Uploading..." : "Song hochladen"}
+                      {uploading
+                        ? "Uploading..."
+                        : selectedFiles.length > 1
+                        ? "Songs hochladen"
+                        : "Song hochladen"}
                     </Button>
                   </div>
                 </div>
@@ -570,8 +460,34 @@ export default function MyUploads() {
         </Card>
       </div>
 
-      {/* Tracks List */}
+      {/* Actions + Tracks List */}
       <div className="p-6">
+        {userTracks.length > 0 && (
+          <div className="flex items-center gap-3 mb-4">
+            <Button
+              variant="default"
+              className="rounded-full"
+              onClick={() => {
+                // Shuffle mix: randomize order globally and start playing
+                const shuffled = [...userTracks].sort(() => Math.random() - 0.5);
+                setQueue(shuffled as any);
+                void play(shuffled[0] as any, shuffled as any);
+              }}
+            >
+              Shuffle Mix
+            </Button>
+            
+            <MetadataEnhancerButton
+              tracks={userTracks.map(track => ({
+                id: track.id,
+                title: track.title,
+                artist: track.artist || 'Unknown Artist',
+                album: track.album
+              }))}
+              onUpdateTracks={fetchUserTracks}
+            />
+          </div>
+        )}
         {loading ? (
           <div className="text-center py-8">
             <p className="text-muted-foreground">Lade Songs...</p>
@@ -628,28 +544,7 @@ export default function MyUploads() {
         )}
       </div>
 
-      {/* Music Player */}
-      {currentTrack && (
-        <MusicPlayer
-          currentTrack={{
-            id: currentTrack.id,
-            title: currentTrack.title,
-            artist: currentTrack.artist,
-            album: currentTrack.album || "",
-            duration: playerDuration || currentTrack.duration || 0,
-            audioUrl: currentTrack.audio_url || undefined,
-            imageUrl: currentTrack.image_url || undefined
-          }}
-          isPlaying={isPlaying}
-          onPlayPause={handlePlayPause}
-          onNext={handleNext}
-          onPrevious={handlePrevious}
-          onSeek={handleSeek}
-          currentTime={currentTime}
-          volume={volume}
-          onVolumeChange={(v) => setVolume(v)}
-        />
-      )}
+  {/* Global MusicPlayer rendered at app root */}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 
 interface Track {
   id: string;
@@ -36,9 +37,8 @@ export function MusicPlayer({
   volume,
   onVolumeChange,
 }: MusicPlayerProps) {
-
   const [isMuted, setIsMuted] = useState(false);
-  const [prevVolume, setPrevVolume] = useState(75);
+  const [prevVolume, setPrevVolume] = useState(50);
 
   // Handle mute/unmute
   const toggleMute = () => {
@@ -64,17 +64,51 @@ export function MusicPlayer({
 
   if (!currentTrack) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-4">
-        <div className="flex items-center justify-center text-muted-foreground">
-          <Music className="h-5 w-5 mr-2" />
-          <span>Select a song to start playing</span>
+      <div
+        className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border p-4"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="flex items-center justify-between gap-4 max-w-screen-2xl mx-auto">
+          <div className="flex items-center gap-4 min-w-0 flex-1">
+            <div className="h-14 w-14 rounded-md bg-muted flex items-center justify-center">
+              <Music className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-center text-muted-foreground">
+                <span>Select a song to start playing</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Empty controls section to match layout */}
+          <div className="flex flex-col items-center gap-2 flex-1 max-w-md">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8"></div> {/* Skip back placeholder */}
+              <div className="w-12 h-12"></div> {/* Play button placeholder */}
+              <div className="w-8 h-8"></div> {/* Skip forward placeholder */}
+            </div>
+            <div className="flex items-center gap-2 w-full">
+              <span className="text-xs text-muted-foreground w-10 text-right">0:00</span>
+              <div className="flex-1 h-2 bg-secondary rounded-full"></div>
+              <span className="text-xs text-muted-foreground w-10">0:00</span>
+            </div>
+          </div>
+          
+          {/* Volume section placeholder */}
+          <div className="flex items-center gap-2 flex-1 justify-end">
+            <div className="w-8 h-8"></div> {/* Volume button placeholder */}
+            <div className="w-24 h-2 bg-secondary rounded-full"></div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border animate-slide-up">
+    <div
+      className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-md border-t border-border"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
       {/* Progress Bar - Enhanced with hover effect */}
       <div className="w-full bg-audio-background h-1 cursor-pointer group relative" onClick={(e) => {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -90,7 +124,7 @@ export function MusicPlayer({
         </div>
       </div>
 
-      <div className="flex items-center justify-between p-4 max-w-screen-2xl mx-auto">
+  <div className="flex items-center justify-between p-4 gap-4 max-w-screen-2xl mx-auto">
         {/* Track Info */}
         <div className="flex items-center gap-4 min-w-0 flex-1">
           <div className="h-14 w-14 rounded-md bg-muted flex items-center justify-center overflow-hidden shadow-md hover:shadow-lg transition-shadow">
@@ -137,7 +171,7 @@ export function MusicPlayer({
             <Button
               variant="ghost"
               size="icon"
-              className="audio-button w-12 h-12 bg-primary text-primary-foreground hover:bg-primary/90 animate-pulse-glow hover:scale-105 transition-transform"
+              className={`audio-button w-12 h-12 bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 transition-transform ${isPlaying ? 'animate-pulse-glow' : ''}`}
               onClick={onPlayPause}
             >
               {isPlaying ? (
@@ -188,16 +222,18 @@ export function MusicPlayer({
               <Volume2 className="h-4 w-4 text-muted-foreground" />
             )}
           </Button>
-          <Slider
-            value={[volume]}
-            max={100}
-            step={1}
-            className="w-24"
-            onValueChange={(value) => {
-              onVolumeChange(value[0]);
-              if (value[0] > 0) setIsMuted(false);
-            }}
-          />
+          <div>
+            <Slider
+              value={[volume]}
+              max={100}
+              step={1}
+              className="w-24"
+              onValueChange={(value) => {
+                onVolumeChange(value[0]);
+                if (value[0] > 0) setIsMuted(false);
+              }}
+            />
+          </div>
         </div>
       </div>
     </div>

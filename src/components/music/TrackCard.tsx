@@ -34,6 +34,7 @@ export function TrackCard({
   showRemove = false
 }: TrackCardProps) {
   const [showAddDialog, setShowAddDialog] = useState(false);
+  
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
-import { createCheckoutSession, getSubscriptionStatus } from '@/services/stripeService';
+// Subscriptions removed: app is free-only
 
 interface AuthContextType {
   user: User | null;
@@ -12,9 +12,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   profile: any;
   refreshProfile: () => Promise<void>;
-  // Add new subscription methods
-  subscribeToplan: (planId: string, isYearly: boolean) => Promise<string | null>;
-  isSubscriptionActive: () => boolean;
+  // Subscriptions removed: no premium plans
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -57,8 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: user.id,
           display_name: user.user_metadata?.username || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
           bio: '',
-          avatar_url: null,
-          subscription_tier: 'free'
+          avatar_url: null
         };
         
         const { data: createdProfile, error: createError } = await supabase
@@ -230,47 +227,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Add new method to subscribe to a plan
-  const subscribeToplan = async (planId: string, isYearly: boolean) => {
-    if (!user) {
-      console.error('User must be logged in to subscribe');
-      return null;
-    }
-    
-    // If selecting the free plan, update directly
-    if (planId === 'free') {
-      try {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ subscription_tier: 'free', subscription_end: null })
-          .eq('id', user.id);
-        
-        if (error) throw error;
-        await refreshProfile();
-        return '/';
-      } catch (error) {
-        console.error('Error downgrading to free plan:', error);
-        return null;
-      }
-    }
-    
-    // For paid plans, create a checkout session
-    return await createCheckoutSession(planId, isYearly, window.location.origin);
-  };
-
-  // Check if user has an active subscription
-  const isSubscriptionActive = () => {
-    if (!profile) return false;
-    
-    // Free tier is considered "active" for basic features
-    if (profile.subscription_tier === 'free') return true;
-    
-    // Check if paid subscription has expired
-    if (!profile.subscription_end) return false;
-    
-    const endDate = new Date(profile.subscription_end);
-    return endDate > new Date();
-  };
+  // Subscriptions removed: no checkout, no active checks
 
   const value = {
     user,
@@ -281,9 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut,
     profile,
     refreshProfile,
-    // Add new subscription methods to context
-    subscribeToplan,
-    isSubscriptionActive,
+  // Free app: no subscription methods
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

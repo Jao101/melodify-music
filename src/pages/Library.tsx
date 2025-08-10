@@ -130,7 +130,7 @@ export default function Library() {
       </div>
 
       {/* Playlists Grid */}
-      <div className="flex-1 px-6 pb-6 overflow-auto">
+  <div className="flex-1 px-6 pb-24 overflow-auto">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredPlaylists.map((playlist) => {
             const Icon = playlist.icon;

@@ -194,41 +194,10 @@ export function AppSidebar({ onShowSubscriptionPlans }: { onShowSubscriptionPlan
           </div>
         )}
 
-        {/* Footer Bereich mit Profil und Premium */}
+  {/* Footer Bereich mit Profil */}
         <div className={`mt-auto p-2 space-y-3 ${collapsed ? '' : 'px-4'}`}>
           {/* User Profile Menu - New Dropdown Component */}
           <UserProfileMenu collapsed={collapsed} />
-
-          {/* Upgrade Banner - Spotify Style */}
-          {(!profile?.subscription_tier || profile?.subscription_tier === 'free') && (
-            <div className={`rounded-lg overflow-hidden hover:shadow-md transition-shadow ${collapsed ? 'p-2' : ''}`}>
-              <div className={`bg-gradient-to-br from-primary/20 via-accent/10 to-primary/10 ${collapsed ? 'p-2 rounded-lg' : 'p-4'} border border-primary/20`}>
-                {collapsed ? (
-                  <button
-                    onClick={onShowSubscriptionPlans}
-                    className="w-full h-full flex items-center justify-center"
-                  >
-                    <span className="sr-only">Get Premium</span>
-                    <ChevronRight className="h-4 w-4 text-primary" />
-                  </button>
-                ) : (
-                  <>
-                    <h3 className="font-semibold text-sm mb-2 text-foreground">Upgrade to Premium</h3>
-                    <p className="text-xs text-muted-foreground mb-3">
-                      Get unlimited music generation and ad-free listening
-                    </p>
-                    <button 
-                      onClick={onShowSubscriptionPlans}
-                      className="w-full bg-primary text-primary-foreground rounded-full py-2 text-sm font-medium hover:bg-primary/90 hover:scale-[1.02] transition-all flex items-center justify-center gap-1"
-                    >
-                      Get Premium
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       </SidebarContent>
     </Sidebar>
