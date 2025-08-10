@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { UserCircle, Settings, LogOut, User, CreditCard, Bell, ChevronRight, Edit3, Info } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { 
   DropdownMenu, 
   DropdownMenuTrigger, 
@@ -23,9 +24,10 @@ interface UserProfileMenuProps {
 export function UserProfileMenu({ collapsed = false }: UserProfileMenuProps) {
   const { profile, signOut } = useAuth();
   const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const navigate = useNavigate();
   
   const navigateTo = (path: string) => {
-    window.location.href = path;
+    navigate(path);
   };
   
   return (
@@ -99,26 +101,23 @@ export function UserProfileMenu({ collapsed = false }: UserProfileMenuProps) {
             <Edit3 className="mr-2 h-4 w-4" />
             <span>Edit Profile</span>
           </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer" onClick={() => alert("Account settings coming soon")}>
+          <DropdownMenuItem className="cursor-pointer" onClick={() => navigateTo('/account-settings')}>
             <User className="mr-2 h-4 w-4" />
-            <span>Account</span>
-            <span className="text-xs ml-auto opacity-60">Soon</span>
+            <span>Account Settings</span>
           </DropdownMenuItem>
           <DropdownMenuItem className="cursor-pointer" onClick={() => navigateTo('/subscription')}>
             <CreditCard className="mr-2 h-4 w-4" />
             <span>Subscription</span>
           </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer" onClick={() => alert("Notification preferences coming soon")}>
+          <DropdownMenuItem className="cursor-pointer" onClick={() => navigateTo('/notification-settings')}>
             <Bell className="mr-2 h-4 w-4" />
             <span>Notifications</span>
-            <span className="text-xs ml-auto opacity-60">Soon</span>
           </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer" onClick={() => alert("Settings coming soon")}>
+          <DropdownMenuItem className="cursor-pointer" onClick={() => navigateTo('/app-settings')}>
             <Settings className="mr-2 h-4 w-4" />
             <span>Settings</span>
-            <span className="text-xs ml-auto opacity-60">Soon</span>
           </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer" onClick={() => alert("About Auralia AI")}>
+          <DropdownMenuItem className="cursor-pointer" onClick={() => navigateTo('/about')}>
             <Info className="mr-2 h-4 w-4" />
             <span>About</span>
             <span className="text-xs ml-auto opacity-60">v1.0</span>

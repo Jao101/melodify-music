@@ -91,7 +91,7 @@ export default function Library() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-screen bg-background pb-24">
       {/* Header */}
       <div className="p-6 bg-gradient-to-b from-primary/10 to-background">
         <div className="flex items-center justify-between mb-6">

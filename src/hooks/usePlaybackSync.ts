@@ -6,21 +6,11 @@ export function usePlaybackSync(params: { trackId?: string; positionSec: number;
   const { user } = useAuth();
   const lastSentRef = useRef<number>(0);
 
-  // Heartbeat to persist playback every ~5s when playing
+  // DISABLED: This hook is now redundant since useAudioPlayer handles playback sync
+  // Keeping the hook interface for compatibility but removing the logic
   useEffect(() => {
-    if (!user) return;
-    const interval = setInterval(() => {
-      try {
-        if (!params.trackId || !params.isPlaying) return;
-        const now = Date.now();
-        if (now - lastSentRef.current < 4000) return;
-        lastSentRef.current = now;
-        void upsertPlaybackState(params.trackId, Math.floor(params.positionSec || 0));
-      } catch {
-        // ignore heartbeat errors
-      }
-    }, 2000);
-    return () => clearInterval(interval);
+    // No-op: useAudioPlayer now handles all playback persistence
+    console.log('🔄 usePlaybackSync is disabled - useAudioPlayer handles persistence');
   }, [user, params.trackId, params.positionSec, params.isPlaying]);
 
   return {

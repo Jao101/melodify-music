@@ -268,6 +268,57 @@ export default function MyUploads() {
 
   const handleDeleteTrack = async (trackId: string) => {
     try {
+      // First, get the track data to find the storage path
+      const { data: track, error: fetchError } = await supabase
+        .from('tracks')
+        .select('metadata')
+        .eq('id', trackId)
+        .eq('generated_by', user?.id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Delete from all playlists first
+      const { error: playlistError } = await supabase
+        .from('playlist_tracks')
+        .delete()
+        .eq('track_id', trackId);
+
+      if (playlistError) throw playlistError;
+
+      // Delete from liked tracks
+      const { error: likedError } = await supabase
+        .from('liked_tracks')
+        .delete()
+        .eq('track_id', trackId);
+
+      if (likedError) throw likedError;
+
+      // Clear playback state if this track is currently being played
+      const { error: playbackError } = await (supabase as any)
+        .from('playback_state')
+        .update({ track_id: null, position: 0 })
+        .eq('track_id', trackId);
+
+      if (playbackError) {
+        console.warn('Failed to clear playback state:', playbackError);
+        // Don't throw here, continue with deletion
+      }
+
+      // Delete the audio file from storage if it exists
+      if (track?.metadata && (track.metadata as any).storage_path) {
+        const storagePath = (track.metadata as any).storage_path;
+        const { error: storageError } = await supabase.storage
+          .from('user-songs')
+          .remove([storagePath]);
+
+        if (storageError) {
+          console.warn('Failed to delete audio file from storage:', storageError);
+          // Don't throw here, continue with database deletion
+        }
+      }
+
+      // Finally delete the track from the database
       const { error } = await supabase
         .from('tracks')
         .delete()
@@ -278,7 +329,7 @@ export default function MyUploads() {
 
       toast({
         title: "Erfolg",
-        description: "Song wurde gelöscht",
+        description: "Song wurde vollständig gelöscht",
       });
 
       fetchUserTracks();

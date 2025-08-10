@@ -106,7 +106,7 @@ export default function LikedSongs() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-screen bg-background pb-24">
       {/* Header with Gradient */}
       <div className="bg-gradient-to-b from-purple-600/20 via-pink-500/10 to-background p-6">
         <div className="flex items-center gap-4 mb-6">

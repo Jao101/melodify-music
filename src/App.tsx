@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { SettingsProvider } from "@/contexts/SettingsContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -12,6 +13,10 @@ import LikedSongs from "./pages/LikedSongs";
 import NotFound from "./pages/NotFound";
 import MyUploads from "./pages/MyUploads";
 import Playlist from "./pages/Playlist";
+import AccountSettings from "./pages/AccountSettings";
+import NotificationSettingsPage from "./pages/NotificationSettings";
+import AppSettings from "./pages/AppSettings";
+import About from "./pages/About";
 import { AudioPlayerProvider, useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { MusicPlayer } from "@/components/music/MusicPlayer";
 import { useAuth } from "@/contexts/AuthContext";
@@ -54,7 +59,32 @@ function GlobalPlayer() {
     return () => clearTimeout(timer);
   }, [user, loading]);
   
+  // Debug duration values only when they change - ALWAYS call this hook
+  useEffect(() => {
+    if (currentTrack && showPlayer) {
+      const finalDuration = duration && duration > 0 ? duration : (currentTrack?.duration && currentTrack.duration > 0 ? currentTrack.duration : 0);
+      console.log('🔍 Duration Debug:', {
+        hookDuration: duration,
+        trackDuration: currentTrack?.duration,
+        finalDuration,
+        trackTitle: currentTrack?.title,
+        isHookDurationValid: duration && duration > 0,
+        isTrackDurationValid: currentTrack?.duration && currentTrack.duration > 0
+      });
+    }
+  }, [duration, currentTrack?.duration, currentTrack?.title, showPlayer]);
+  
   if (!showPlayer) return null;
+  
+  // Better duration calculation with fallbacks
+  const calculateDuration = () => {
+    // Priority: hook duration (from audio metadata) > track duration (from DB) > 0
+    if (duration && duration > 0) return duration;
+    if (currentTrack?.duration && currentTrack.duration > 0) return currentTrack.duration;
+    return 0;
+  };
+  
+  const finalDuration = calculateDuration();
   
   const props = {
     currentTrack: currentTrack
@@ -63,7 +93,7 @@ function GlobalPlayer() {
           title: currentTrack.title || '',
           artist: currentTrack.artist || '',
           album: currentTrack.album || '',
-          duration: duration || currentTrack.duration || 0,
+          duration: finalDuration,
           audioUrl: currentTrack.audio_url || undefined,
           imageUrl: currentTrack.image_url || undefined,
         }
@@ -87,8 +117,9 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <AudioPlayerProvider>
-            <Routes>
+          <SettingsProvider>
+            <AudioPlayerProvider>
+              <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route 
               path="/" 
@@ -130,11 +161,44 @@ const App = () => (
                 </ProtectedRoute>
               } 
             />
+            <Route 
+              path="/account-settings" 
+              element={
+                <ProtectedRoute>
+                  <AccountSettings />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/notification-settings" 
+              element={
+                <ProtectedRoute>
+                  <NotificationSettingsPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/app-settings" 
+              element={
+                <ProtectedRoute>
+                  <AppSettings />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/about" 
+              element={
+                <ProtectedRoute>
+                  <About />
+                </ProtectedRoute>
+              } 
+            />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
             </Routes>
             <GlobalPlayer />
           </AudioPlayerProvider>
+          </SettingsProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

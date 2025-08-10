@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, createContext, useContext } from "react";
 import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { getPlaybackState, upsertPlaybackState } from "@/services/playbackService";
+import { getPlaybackState, upsertPlaybackState, testPlaybackState } from "@/services/playbackService";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Json, Tables } from "@/integrations/supabase/types";
 
@@ -95,6 +95,8 @@ function useProvideAudioPlayer(): PlayerAPI {
   const { user } = useAuth();
   const resumedOnceRef = useRef(false);
   const QUEUE_KEY = "playback_queue_v1";
+  const lastSaveTimeRef = useRef(0);
+  const SAVE_THROTTLE_MS = 1500; // Throttle saves to every 1.5 seconds
   
   // Local fallback for persistence if DB sync fails or user is unauthenticated
   const LOCAL_KEY = "playback_state_v1";
@@ -151,24 +153,79 @@ function useProvideAudioPlayer(): PlayerAPI {
     el.volume = volume / 100;
     audioRef.current = el;
 
-    const onTime = () => setCurrentTime(el.currentTime);
-    const onLoaded = () => setDuration(Number.isFinite(el.duration) ? el.duration : 0);
+    const savePositionThrottled = (currentTime: number) => {
+      const now = Date.now();
+      if (now - lastSaveTimeRef.current >= SAVE_THROTTLE_MS && currentTrack) {
+        lastSaveTimeRef.current = now;
+        console.log('🔄 Throttled save at position:', currentTime);
+        // Always save locally
+        saveLocalState({ track: currentTrack, position: currentTime });
+        // Save to DB if user is logged in
+        if (user) {
+          upsertPlaybackState(currentTrack.id, currentTime).catch(() => {});
+        }
+      }
+    };
+
+    const onTime = () => {
+      const time = el.currentTime;
+      setCurrentTime(time);
+      
+      // Check if duration became available during playback
+      if ((!duration || duration <= 0) && Number.isFinite(el.duration) && el.duration > 0) {
+        console.log('🔄 Duration became available during playback:', el.duration);
+        setDuration(el.duration);
+      }
+      
+      // Auto-save position during playback (throttled)
+      if (isPlaying && currentTrack) {
+        savePositionThrottled(time);
+      }
+    };
+    
+    const onLoaded = () => {
+      const trackDuration = Number.isFinite(el.duration) ? el.duration : 0;
+      console.log('🎵 Track metadata loaded - Audio Duration:', trackDuration, 'seconds');
+      if (trackDuration > 0) {
+        setDuration(trackDuration);
+      }
+    };
+    
+    const onDurationChange = () => {
+      const trackDuration = Number.isFinite(el.duration) ? el.duration : 0;
+      console.log('🎵 Duration changed - New Audio Duration:', trackDuration, 'seconds');
+      if (trackDuration > 0) {
+        setDuration(trackDuration);
+      }
+    };
+    
+    const onCanPlay = () => {
+      const trackDuration = Number.isFinite(el.duration) ? el.duration : 0;
+      console.log('🎵 Can play - Audio Duration:', trackDuration, 'seconds');
+      if (trackDuration > 0) {
+        setDuration(trackDuration);
+      }
+    };
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
 
     el.addEventListener("timeupdate", onTime);
     el.addEventListener("loadedmetadata", onLoaded);
+    el.addEventListener("durationchange", onDurationChange);
+    el.addEventListener("canplay", onCanPlay);
     el.addEventListener("play", onPlay);
     el.addEventListener("pause", onPause);
 
     return () => {
       el.removeEventListener("timeupdate", onTime);
       el.removeEventListener("loadedmetadata", onLoaded);
+      el.removeEventListener("durationchange", onDurationChange);
+      el.removeEventListener("canplay", onCanPlay);
       el.removeEventListener("play", onPlay);
       el.removeEventListener("pause", onPause);
       el.pause();
     };
-  }, []);
+  }, [volume, isPlaying, currentTrack, user, saveLocalState]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume / 100;
@@ -183,16 +240,53 @@ function useProvideAudioPlayer(): PlayerAPI {
     }
   }, [volume]);
 
-  // Sync current time to Supabase periodically when playing and user is logged in
+  // Sync current time to Supabase more frequently when playing and user is logged in
   useEffect(() => {
     if (!isPlaying || !currentTrack || !user) return;
 
     const interval = setInterval(() => {
-      upsertPlaybackState(currentTrack.id, currentTime).catch(() => {});
-    }, 5000); // every 5 seconds
+      if (audioRef.current) {
+        const currentPos = audioRef.current.currentTime;
+        console.log('💾 Auto-saving playback position:', currentPos);
+        upsertPlaybackState(currentTrack.id, currentPos).catch(() => {});
+        saveLocalState({ track: currentTrack, position: currentPos });
+      }
+    }, 2000); // every 2 seconds for more frequent saves
 
     return () => clearInterval(interval);
-  }, [isPlaying, currentTrack, currentTime, user]);
+  }, [isPlaying, currentTrack, user, saveLocalState]);
+
+  // Update currentTime more frequently to ensure smooth progress bar
+  useEffect(() => {
+    if (!isPlaying || !audioRef.current) return;
+
+    const interval = setInterval(() => {
+      if (audioRef.current) {
+        const time = audioRef.current.currentTime;
+        setCurrentTime(time);
+        
+        // Also check if duration became available
+        if ((!duration || duration <= 0) && Number.isFinite(audioRef.current.duration) && audioRef.current.duration > 0) {
+          console.log('🔄 Duration became available via interval check:', audioRef.current.duration);
+          setDuration(audioRef.current.duration);
+        }
+      }
+    }, 500); // Update every 500ms for smooth progress
+
+    return () => clearInterval(interval);
+  }, [isPlaying, duration]);
+
+  // Save position immediately when playback stops (pause/stop)
+  useEffect(() => {
+    if (!currentTrack || !user) return;
+    
+    // If we're not playing and we have a current time > 0, save it immediately
+    if (!isPlaying && currentTime > 0) {
+      console.log('⏸️ Saving position on pause:', currentTime);
+      upsertPlaybackState(currentTrack.id, currentTime).catch(() => {});
+      saveLocalState({ track: currentTrack, position: currentTime });
+    }
+  }, [isPlaying, currentTrack, currentTime, user, saveLocalState]);
 
   // Try to restore from local state on mount (without starting playback)
   useEffect(() => {
@@ -220,7 +314,17 @@ function useProvideAudioPlayer(): PlayerAPI {
 
         // Try to restore playback state
         if (user) {
+          console.log('🔄 Attempting to restore playback state for user:', user.id);
+          
+          // Test table access first
+          const tableAccessible = await testPlaybackState();
+          if (!tableAccessible) {
+            console.error('❌ Playback state table is not accessible, skipping DB sync');
+          }
+          
           const state = await getPlaybackState();
+          console.log('💾 Playback state from DB:', state);
+          
           if (state?.track_id) {
             const { data: track } = await supabase
               .from('tracks')
@@ -228,20 +332,45 @@ function useProvideAudioPlayer(): PlayerAPI {
               .eq('id', state.track_id)
               .single();
             
+            console.log('🎵 Track found for restoration:', track?.title);
+            
             if (track && isPlayableTrack(track)) {
               setCurrentTrack(track);
+              // Initialize duration from track data immediately
+              if (track.duration && track.duration > 0) {
+                setDuration(track.duration);
+                console.log('🎵 Set initial duration from track data:', track.duration);
+              }
               if (audioRef.current) {
                 const url = await resolvePlayableUrl(track);
                 if (url) {
                   audioRef.current.src = url;
-                  audioRef.current.currentTime = state.position || 0;
-                  if (state.volume !== null) {
+                  
+                  // Wait for metadata to load and get accurate duration
+                  const onLoadedMetadata = () => {
+                    if (audioRef.current && Number.isFinite(audioRef.current.duration) && audioRef.current.duration > 0) {
+                      setDuration(audioRef.current.duration);
+                      console.log('🎵 Updated duration from audio metadata:', audioRef.current.duration);
+                    }
+                    audioRef.current?.removeEventListener('loadedmetadata', onLoadedMetadata);
+                  };
+                  audioRef.current.addEventListener('loadedmetadata', onLoadedMetadata);
+                  
+                  if (state.position && state.position > 0) {
+                    audioRef.current.currentTime = state.position;
+                    setCurrentTime(state.position); // Also set the state
+                    console.log('⏰ Restored position:', state.position);
+                  }
+                  if (state.volume !== null && state.volume !== undefined) {
                     const vol = Math.max(0, Math.min(100, state.volume));
                     setVolume(vol);
+                    console.log('🔊 Restored volume:', vol);
                   }
                 }
               }
             }
+          } else {
+            console.log('ℹ️ No saved playback state found');
           }
         } else {
           // Fallback to localStorage for unauthenticated users
@@ -258,11 +387,31 @@ function useProvideAudioPlayer(): PlayerAPI {
                 
                 if (track && isPlayableTrack(track)) {
                   setCurrentTrack(track);
+                  // Initialize duration from track data immediately
+                  if (track.duration && track.duration > 0) {
+                    setDuration(track.duration);
+                    console.log('🎵 Set initial duration from track data (localStorage):', track.duration);
+                  }
                   if (audioRef.current) {
                     const url = await resolvePlayableUrl(track);
                     if (url) {
                       audioRef.current.src = url;
-                      audioRef.current.currentTime = saved.position || 0;
+                      
+                      // Wait for metadata to load and get accurate duration
+                      const onLoadedMetadata = () => {
+                        if (audioRef.current && Number.isFinite(audioRef.current.duration) && audioRef.current.duration > 0) {
+                          setDuration(audioRef.current.duration);
+                          console.log('🎵 Updated duration from audio metadata (localStorage):', audioRef.current.duration);
+                        }
+                        audioRef.current?.removeEventListener('loadedmetadata', onLoadedMetadata);
+                      };
+                      audioRef.current.addEventListener('loadedmetadata', onLoadedMetadata);
+                      
+                      if (saved.position && saved.position > 0) {
+                        audioRef.current.currentTime = saved.position;
+                        setCurrentTime(saved.position); // Also set the state
+                        console.log('⏰ Restored position from localStorage:', saved.position);
+                      }
                     }
                   }
                 }
@@ -279,6 +428,8 @@ function useProvideAudioPlayer(): PlayerAPI {
   }, [user, loadLocalQueue]);
 
   const play = useCallback(async (track: BaseTrack, list?: BaseTrack[]) => {
+    console.log('🎵 Play function called with track:', track.title);
+    
     if (!isPlayableTrack(track)) {
       console.warn('Track is not playable:', track);
       return;
@@ -291,6 +442,8 @@ function useProvideAudioPlayer(): PlayerAPI {
         return;
       }
 
+      console.log('✅ Resolved URL:', url);
+
       if (audioRef.current) {
         audioRef.current.src = url;
         setCurrentTrack(track);
@@ -299,8 +452,55 @@ function useProvideAudioPlayer(): PlayerAPI {
           setQueue(list);
         }
 
+        // Wait for metadata to be loaded before playing
+        const waitForMetadata = () => {
+          return new Promise<void>((resolve) => {
+            const audio = audioRef.current!;
+            if (audio.readyState >= 1) { // HAVE_METADATA
+              const audioDuration = Number.isFinite(audio.duration) ? audio.duration : 0;
+              console.log('✅ Metadata already loaded, audio duration:', audioDuration);
+              setDuration(audioDuration);
+              resolve();
+            } else {
+              const onLoaded = () => {
+                const audioDuration = Number.isFinite(audio.duration) ? audio.duration : 0;
+                console.log('✅ Metadata loaded during play, audio duration:', audioDuration);
+                setDuration(audioDuration);
+                audio.removeEventListener('loadedmetadata', onLoaded);
+                clearTimeout(timeoutId); // Clear timeout when metadata loads
+                resolve();
+              };
+              audio.addEventListener('loadedmetadata', onLoaded);
+              // Timeout fallback in case metadata doesn't load
+              const timeoutId = setTimeout(() => {
+                console.log('⚠️ Metadata load timeout, using track duration fallback:', track.duration);
+                const fallbackDuration = track.duration && track.duration > 0 ? track.duration : 0;
+                console.log('⚠️ Setting fallback duration:', fallbackDuration);
+                setDuration(fallbackDuration);
+                audio.removeEventListener('loadedmetadata', onLoaded);
+                resolve();
+              }, 1500); // Reduced from 3000ms to 1500ms
+            }
+          });
+        };
+
+        await waitForMetadata();
         await audioRef.current.play();
         setIsPlaying(true);
+        
+        console.log('✅ Started playing successfully');
+        
+        // Double-check duration after play starts
+        if (audioRef.current && (!duration || duration <= 0)) {
+          const audioDuration = Number.isFinite(audioRef.current.duration) ? audioRef.current.duration : 0;
+          if (audioDuration > 0) {
+            console.log('🔄 Setting duration after play start:', audioDuration);
+            setDuration(audioDuration);
+          } else if (track.duration && track.duration > 0) {
+            console.log('🔄 Using track duration as final fallback:', track.duration);
+            setDuration(track.duration);
+          }
+        }
         
         // Save state immediately when playing starts
         saveLocalState({ track, position: 0 });
@@ -311,7 +511,7 @@ function useProvideAudioPlayer(): PlayerAPI {
         }
       }
     } catch (error) {
-      console.error('Error playing track:', error);
+      console.error('❌ Error playing track:', error);
       setIsPlaying(false);
     }
   }, [setQueue, saveLocalState, user, volume]);
@@ -331,6 +531,39 @@ function useProvideAudioPlayer(): PlayerAPI {
           setQueue(list);
         }
 
+        // Wait for metadata to be loaded
+        const waitForMetadata = () => {
+          return new Promise<void>((resolve) => {
+            const audio = audioRef.current!;
+            if (audio.readyState >= 1) { // HAVE_METADATA
+              const audioDuration = Number.isFinite(audio.duration) ? audio.duration : 0;
+              console.log('✅ Prime: Metadata already loaded, audio duration:', audioDuration);
+              setDuration(audioDuration);
+              resolve();
+            } else {
+              const onLoaded = () => {
+                const audioDuration = Number.isFinite(audio.duration) ? audio.duration : 0;
+                console.log('✅ Prime: Metadata loaded, audio duration:', audioDuration);
+                setDuration(audioDuration);
+                audio.removeEventListener('loadedmetadata', onLoaded);
+                clearTimeout(timeoutId); // Clear timeout when metadata loads
+                resolve();
+              };
+              audio.addEventListener('loadedmetadata', onLoaded);
+              // Timeout fallback
+              const timeoutId = setTimeout(() => {
+                console.log('⚠️ Prime: Metadata load timeout, using track duration fallback:', track.duration);
+                const fallbackDuration = track.duration && track.duration > 0 ? track.duration : 0;
+                console.log('⚠️ Prime: Setting fallback duration:', fallbackDuration);
+                setDuration(fallbackDuration);
+                audio.removeEventListener('loadedmetadata', onLoaded);
+                resolve();
+              }, 1500); // Reduced from 3000ms to 1500ms
+            }
+          });
+        };
+
+        await waitForMetadata();
         audioRef.current.currentTime = positionSec;
         setCurrentTime(positionSec);
         
@@ -350,18 +583,22 @@ function useProvideAudioPlayer(): PlayerAPI {
         audioRef.current.pause();
         setIsPlaying(false);
         if (currentTrack) {
-          saveLocalState({ track: currentTrack, position: audioRef.current.currentTime });
+          const currentPos = audioRef.current.currentTime;
+          console.log('⏸️ Immediate save on pause:', currentPos);
+          saveLocalState({ track: currentTrack, position: currentPos });
           if (user) {
-            upsertPlaybackState(currentTrack.id, audioRef.current.currentTime).catch(() => {});
+            upsertPlaybackState(currentTrack.id, currentPos).catch(() => {});
           }
         }
       } else {
         await audioRef.current.play();
         setIsPlaying(true);
         if (currentTrack) {
-          saveLocalState({ track: currentTrack, position: audioRef.current.currentTime });
+          const currentPos = audioRef.current.currentTime;
+          console.log('▶️ Save on play resume:', currentPos);
+          saveLocalState({ track: currentTrack, position: currentPos });
           if (user) {
-            upsertPlaybackState(currentTrack.id, audioRef.current.currentTime).catch(() => {});
+            upsertPlaybackState(currentTrack.id, currentPos).catch(() => {});
           }
         }
       }
@@ -369,23 +606,37 @@ function useProvideAudioPlayer(): PlayerAPI {
       console.error('Error toggling play/pause:', error);
       setIsPlaying(false);
     }
-  }, [isPlaying, currentTrack, saveLocalState, user, volume]);
+  }, [isPlaying, currentTrack, saveLocalState, user]);
 
   const seek = useCallback((time: number) => {
     if (audioRef.current) {
       audioRef.current.currentTime = time;
       setCurrentTime(time);
       if (currentTrack) {
+        // Immediately save position when seeking - this is critical for resume
+        console.log('⏭️ Immediate save on seek:', time);
         saveLocalState({ track: currentTrack, position: time });
         if (user) {
           upsertPlaybackState(currentTrack.id, time).catch(() => {});
         }
+        // Update throttle timestamp to prevent duplicate saves immediately after seek
+        lastSaveTimeRef.current = Date.now();
       }
     }
-  }, [currentTrack, saveLocalState, user, isPlaying, volume]);
+  }, [currentTrack, saveLocalState, user]);
 
   const next = useCallback(() => {
     if (!currentTrack || queue.length === 0) return;
+    
+    // Save current position before switching tracks
+    if (audioRef.current && audioRef.current.currentTime > 0) {
+      console.log('💾 Saving position before next track:', audioRef.current.currentTime);
+      saveLocalState({ track: currentTrack, position: audioRef.current.currentTime });
+      if (user) {
+        upsertPlaybackState(currentTrack.id, audioRef.current.currentTime).catch(() => {});
+      }
+    }
+    
     const i = queue.findIndex((t) => t.id === currentTrack.id);
     const nextTrack = queue[i + 1];
     if (nextTrack) {
@@ -395,14 +646,24 @@ function useProvideAudioPlayer(): PlayerAPI {
     } else {
       setIsPlaying(false);
     }
-  }, [currentTrack, queue, play, saveLocalState]);
+  }, [currentTrack, queue, play, saveLocalState, user]);
 
   const previous = useCallback(() => {
     if (!currentTrack || queue.length === 0) return;
+    
+    // Save current position before switching tracks
+    if (audioRef.current && audioRef.current.currentTime > 0) {
+      console.log('💾 Saving position before previous track:', audioRef.current.currentTime);
+      saveLocalState({ track: currentTrack, position: audioRef.current.currentTime });
+      if (user) {
+        upsertPlaybackState(currentTrack.id, audioRef.current.currentTime).catch(() => {});
+      }
+    }
+    
     const i = queue.findIndex((t) => t.id === currentTrack.id);
     const prevTrack = queue[i - 1];
     if (prevTrack) void play(prevTrack, queue);
-  }, [currentTrack, queue, play]);
+  }, [currentTrack, queue, play, saveLocalState, user]);
 
   // Handle track end with proper dependencies - FIX for auto-next
   useEffect(() => {

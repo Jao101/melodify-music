@@ -53,14 +53,28 @@ export function MusicPlayer({
   };
 
   const formatTime = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progressPercentage = currentTrack 
-    ? (currentTime / currentTrack.duration) * 100 
+  const progressPercentage = currentTrack && currentTrack.duration > 0
+    ? Math.min(100, Math.max(0, (currentTime / currentTrack.duration) * 100))
     : 0;
+
+  // Debug duration display only when duration changes
+  useEffect(() => {
+    if (currentTrack) {
+      console.log('🎵 MusicPlayer Duration Update:', {
+        trackTitle: currentTrack.title,
+        duration: currentTrack.duration,
+        currentTime,
+        isValidDuration: currentTrack.duration > 0,
+        progressPercentage
+      });
+    }
+  }, [currentTrack?.duration, currentTrack?.title]);
 
   if (!currentTrack) {
     return (
@@ -111,6 +125,7 @@ export function MusicPlayer({
     >
       {/* Progress Bar - Enhanced with hover effect */}
       <div className="w-full bg-audio-background h-1 cursor-pointer group relative" onClick={(e) => {
+        if (!currentTrack.duration || currentTrack.duration <= 0) return; // Don't allow seeking if no duration
         const rect = e.currentTarget.getBoundingClientRect();
         const percent = (e.clientX - rect.left) / rect.width;
         onSeek(percent * currentTrack.duration);
@@ -119,8 +134,10 @@ export function MusicPlayer({
           className="h-full bg-audio-progress relative transition-all duration-200 group-hover:bg-primary"
           style={{ width: `${progressPercentage}%` }}
         >
-          {/* Draggable knob - appears on hover */}
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 h-3 w-3 bg-primary rounded-full opacity-0 group-hover:opacity-100 shadow-sm -mr-1.5"></div>
+          {/* Draggable knob - appears on hover, only if duration is valid */}
+          {currentTrack.duration > 0 && (
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 h-3 w-3 bg-primary rounded-full opacity-0 group-hover:opacity-100 shadow-sm -mr-1.5"></div>
+          )}
         </div>
       </div>
 
@@ -197,13 +214,14 @@ export function MusicPlayer({
             </span>
             <Slider
               value={[currentTime]}
-              max={currentTrack.duration}
+              max={Math.max(currentTrack.duration, 1)} // Prevent division by zero
               step={1}
               className="flex-1"
+              disabled={!currentTrack.duration || currentTrack.duration <= 0}
               onValueChange={(value) => onSeek(value[0])}
             />
             <span className="text-xs text-muted-foreground w-10">
-              {formatTime(currentTrack.duration)}
+              {currentTrack.duration > 0 ? formatTime(currentTrack.duration) : "--:--"}
             </span>
           </div>
         </div>
