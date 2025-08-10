@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, Music, Play, Trash2, Shuffle } from "lucide-react";
 import { deletePlaylist } from "@/services/playlistService";
 import { useToast } from "@/hooks/use-toast";
+import { isPlayableTrack } from "@/hooks/useAudioPlayer";
 import { usePlaylist } from "@/hooks/usePlaylist";
 import { usePlaylistTracks } from "@/hooks/usePlaylistTracks";
 import { TrackCard } from "@/components/music/TrackCard";
@@ -35,12 +36,14 @@ export default function Playlist() {
 
   const isOwner = user?.id === playlist?.owner_id;
 
-  const filtered = tracks.filter((pt) =>
-    [pt.track.title, pt.track.artist, pt.track.album ?? ""]
-      .join(" ")
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  );
+  const filtered = tracks
+    .filter((pt) => isPlayableTrack(pt.track))
+    .filter((pt) =>
+      [pt.track.title, pt.track.artist, pt.track.album ?? ""]
+        .join(" ")
+        .toLowerCase()
+        .includes(search.toLowerCase())
+    );
 
   const handleRemoveTrack = async (trackId: string) => {
     if (!id || !isOwner) return;

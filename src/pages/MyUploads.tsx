@@ -12,6 +12,8 @@ import { TrackCard } from "@/components/music/TrackCard";
 import { MusicPlayer } from "@/components/music/MusicPlayer";
 import AddToPlaylistDialog from "@/components/playlists/AddToPlaylistDialog";
 import { ListPlus } from "lucide-react";
+import { usePlaybackSync } from "@/hooks/usePlaybackSync";
+import { getPlaybackState, upsertPlaybackState } from "@/services/playbackService";
 
 export default function MyUploads() {
   const navigate = useNavigate();
@@ -27,6 +29,18 @@ export default function MyUploads() {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  // Audio player state
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [playerDuration, setPlayerDuration] = useState(0);
+  const [volume, setVolume] = useState(75);
+  // Refs to keep latest state in event listeners
+  const latestTrackRef = useRef<Track | null>(null);
+  const latestTracksRef = useRef<Track[]>([]);
+  const resumedRef = useRef<boolean>(false);
+
+  useEffect(() => { latestTrackRef.current = currentTrack; }, [currentTrack]);
+  useEffect(() => { latestTracksRef.current = userTracks; }, [userTracks]);
   
   // Track metadata for upload
   const [trackTitle, setTrackTitle] = useState("");
@@ -63,6 +77,190 @@ export default function MyUploads() {
   useEffect(() => {
     fetchUserTracks();
   }, [user]);
+
+  // Initialize and manage audio element (run once)
+  useEffect(() => {
+    const el = new Audio();
+    el.preload = 'metadata';
+    el.volume = volume / 100;
+
+    const onTime = () => setCurrentTime(el.currentTime);
+    const onLoaded = () => setPlayerDuration(Number.isFinite(el.duration) ? el.duration : 0);
+    const onEnded = () => {
+      const curr = latestTrackRef.current;
+      const list = latestTracksRef.current;
+      if (!curr || !list?.length) {
+        setIsPlaying(false);
+        setCurrentTime(0);
+        return;
+      }
+      const i = list.findIndex(t => t.id === curr.id);
+      const next = list[i + 1];
+      if (next) {
+        void handleTrackPlay(next);
+      } else {
+        setIsPlaying(false);
+        setCurrentTime(0);
+      }
+    };
+
+    el.addEventListener('timeupdate', onTime);
+    el.addEventListener('loadedmetadata', onLoaded);
+    el.addEventListener('ended', onEnded);
+    audioRef.current = el;
+
+    return () => {
+      el.removeEventListener('timeupdate', onTime);
+      el.removeEventListener('loadedmetadata', onLoaded);
+      el.removeEventListener('ended', onEnded);
+      el.pause();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep volume in sync
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume / 100;
+  }, [volume]);
+
+  // Persist playback while playing (heartbeat)
+  usePlaybackSync({
+    trackId: currentTrack?.id,
+    positionSec: currentTime,
+    isPlaying,
+  });
+
+  // Save playback position on unmount (for paused state or last snapshot)
+  useEffect(() => {
+    return () => {
+      const track = latestTrackRef.current;
+      const pos = Math.floor(audioRef.current?.currentTime || currentTime || 0);
+      if (track) {
+        void upsertPlaybackState(track.id, pos).catch(() => {/* ignore */});
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Resume last playback (prime without autoplay) once tracks are loaded
+  useEffect(() => {
+    const tryResume = async () => {
+      if (resumedRef.current) return;
+      if (!userTracks.length) return;
+      try {
+        const state = await getPlaybackState();
+        if (!state?.track_id) {
+          resumedRef.current = true;
+          return;
+        }
+        const match = userTracks.find(t => t.id === state.track_id);
+        if (!match) {
+          resumedRef.current = true;
+          return;
+        }
+        const url = await resolvePlayableUrl(match);
+        if (!url) {
+          resumedRef.current = true;
+          return;
+        }
+        // Prime player
+        setCurrentTrack(match);
+        setIsPlaying(false);
+        setCurrentTime(Math.max(0, state.position || 0));
+        if (audioRef.current) {
+          audioRef.current.src = url;
+          try {
+            audioRef.current.currentTime = Math.max(0, state.position || 0);
+          } catch {
+            // some browsers require metadata loaded; timeupdate listener will correct
+          }
+        }
+      } catch (e) {
+        // ignore resume errors silently
+      } finally {
+        resumedRef.current = true;
+      }
+    };
+    void tryResume();
+  }, [userTracks]);
+
+  // Resolve a playable URL (signed for private bucket)
+  const resolvePlayableUrl = async (track: Track): Promise<string | null> => {
+    const anyTrack: any = track as any;
+    const storagePath: string | undefined = anyTrack?.metadata?.storage_path;
+    if (track.user_uploaded) {
+      let path = storagePath;
+      if (!path && track.audio_url) {
+        // Try to infer path from audio_url if it contains the bucket marker
+        const marker = '/user-songs/';
+        const idx = track.audio_url.indexOf(marker);
+        if (idx !== -1) {
+          path = track.audio_url.substring(idx + marker.length);
+        }
+      }
+      if (path) {
+        const { data, error } = await supabase.storage.from('user-songs').createSignedUrl(path, 60 * 60);
+        if (!error && data?.signedUrl) return data.signedUrl;
+        console.warn('Failed to create signed URL, falling back to audio_url', error);
+      }
+    }
+    return track.audio_url ?? null;
+  };
+
+  const handleTrackPlay = async (track: Track) => {
+    try {
+      const url = await resolvePlayableUrl(track);
+      if (!url) {
+        toast({ title: 'Fehler', description: 'Keine Audio-URL für diesen Song gefunden.', variant: 'destructive' });
+        return;
+      }
+      setCurrentTrack(track);
+      setIsPlaying(true);
+      setCurrentTime(0);
+      if (audioRef.current) {
+        audioRef.current.src = url;
+        await audioRef.current.play();
+      }
+    } catch (e: any) {
+      toast({ title: 'Fehler', description: e?.message || String(e), variant: 'destructive' });
+    }
+  };
+
+  const handlePlayPause = async () => {
+    if (!audioRef.current || !currentTrack) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      try {
+        await audioRef.current.play();
+        setIsPlaying(true);
+      } catch (e: any) {
+        toast({ title: 'Fehler', description: e?.message || String(e), variant: 'destructive' });
+      }
+    }
+  };
+
+  const handleSeek = (time: number) => {
+    if (!audioRef.current) return;
+    const target = Math.max(0, Math.min(time, playerDuration || time));
+    audioRef.current.currentTime = target;
+    setCurrentTime(target);
+  };
+
+  const handleNext = () => {
+    if (!currentTrack) return;
+    const i = userTracks.findIndex(t => t.id === currentTrack.id);
+    const next = userTracks[i + 1];
+    if (next) void handleTrackPlay(next);
+  };
+
+  const handlePrevious = () => {
+    if (!currentTrack) return;
+    const i = userTracks.findIndex(t => t.id === currentTrack.id);
+    const prev = userTracks[i - 1];
+    if (prev) void handleTrackPlay(prev);
+  };
 
   // Validate file
   const validateFile = (file: File): string | null => {
@@ -143,7 +341,7 @@ export default function MyUploads() {
       if (audioError) throw audioError;
       setUploadProgress(50);
 
-      // Get public URL for the audio file
+      // Get public URL (may be inaccessible for private bucket) but also keep storage path
       const { data: { publicUrl: audioUrl } } = supabase.storage
         .from('user-songs')
         .getPublicUrl(audioFileName);
@@ -151,7 +349,7 @@ export default function MyUploads() {
       setUploadProgress(75);
 
       // Create track entry in database
-      const { data: trackData, error: trackError } = await supabase
+    const { data: trackData, error: trackError } = await supabase
         .from('tracks')
         .insert({
           title: trackTitle,
@@ -159,10 +357,11 @@ export default function MyUploads() {
           album: trackAlbum || null,
           genre: trackGenre || null,
           duration: 0, // We'll need to calculate this client-side or set it later
-          audio_url: audioUrl,
+      audio_url: audioUrl,
           generated_by: user.id,
           user_uploaded: true,
-          is_ai_generated: false
+      is_ai_generated: false,
+      metadata: { storage_path: audioFileName }
         })
         .select()
         .single();
@@ -398,10 +597,7 @@ export default function MyUploads() {
                     duration: track.duration,
                     imageUrl: track.image_url || undefined
                   }}
-                  onPlay={() => {
-                    setCurrentTrack(track);
-                    setIsPlaying(true);
-                  }}
+                  onPlay={() => handleTrackPlay(track)}
                   isCurrentTrack={currentTrack?.id === track.id}
                   isPlaying={isPlaying && currentTrack?.id === track.id}
                 />
@@ -440,32 +636,18 @@ export default function MyUploads() {
             title: currentTrack.title,
             artist: currentTrack.artist,
             album: currentTrack.album || "",
-            duration: currentTrack.duration,
+            duration: playerDuration || currentTrack.duration || 0,
             audioUrl: currentTrack.audio_url || undefined,
             imageUrl: currentTrack.image_url || undefined
           }}
           isPlaying={isPlaying}
-          onPlayPause={() => setIsPlaying(!isPlaying)}
-          onNext={() => {
-            const currentIndex = userTracks.findIndex(t => t.id === currentTrack.id);
-            const nextTrack = userTracks[currentIndex + 1];
-            if (nextTrack) {
-              setCurrentTrack(nextTrack);
-              setIsPlaying(true);
-            }
-          }}
-          onPrevious={() => {
-            const currentIndex = userTracks.findIndex(t => t.id === currentTrack.id);
-            const prevTrack = userTracks[currentIndex - 1];
-            if (prevTrack) {
-              setCurrentTrack(prevTrack);
-              setIsPlaying(true);
-            }
-          }}
-          onSeek={(time) => {}}
-          currentTime={0}
-          volume={75}
-          onVolumeChange={() => {}}
+          onPlayPause={handlePlayPause}
+          onNext={handleNext}
+          onPrevious={handlePrevious}
+          onSeek={handleSeek}
+          currentTime={currentTime}
+          volume={volume}
+          onVolumeChange={(v) => setVolume(v)}
         />
       )}
     </div>

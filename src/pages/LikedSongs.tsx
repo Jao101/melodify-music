@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Heart, Search, ArrowLeft, Play, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,72 +8,84 @@ import { LikeButton } from "@/components/music/LikeButton";
 import { useLikedTracks } from "@/hooks/useLikedTracks";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { useAudioPlayer, isPlayableTrack } from "@/hooks/useAudioPlayer";
+import { usePlaybackSync } from "@/hooks/usePlaybackSync";
 
 export default function LikedSongs() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [currentTrack, setCurrentTrack] = useState<any>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [volume, setVolume] = useState(75);
+  const {
+    currentTrack,
+    isPlaying,
+    currentTime,
+    duration,
+    volume,
+    setVolume,
+    play,
+    prime,
+    togglePlayPause,
+    next,
+    previous,
+    seek,
+    setQueue,
+  } = useAudioPlayer();
+
+  // Persist heartbeat
+  usePlaybackSync({ trackId: currentTrack?.id, positionSec: currentTime, isPlaying });
+
+  // Try to resume playback on first render
+  useEffect(() => {
+    (async () => {
+      try {
+        const { getPlaybackState } = await import("@/services/playbackService");
+        const state = await getPlaybackState();
+        if (state?.track_id) {
+          const list = likedTracks.filter(lt => isPlayableTrack(lt.track)).map(lt => lt.track);
+          const resumeTrack = list.find(t => t.id === state.track_id);
+          if (resumeTrack) {
+            setQueue(list);
+            await prime(resumeTrack as any, state.position || 0, list as any);
+          }
+        }
+      } catch {
+        // ignore resume errors
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { likedTracks, loading } = useLikedTracks();
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const filteredTracks = likedTracks.filter(likedTrack =>
-    likedTrack.track.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    likedTrack.track.artist.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (likedTrack.track.album && likedTrack.track.album.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredTracks = likedTracks
+    .filter((lt) => isPlayableTrack(lt.track))
+    .filter(likedTrack =>
+      likedTrack.track.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      likedTrack.track.artist.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (likedTrack.track.album && likedTrack.track.album.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
 
   const handleTrackPlay = (track: any) => {
-    if (currentTrack?.id === track.id) {
-      setIsPlaying(!isPlaying);
-    } else {
-      setCurrentTrack(track);
-      setIsPlaying(true);
-      setCurrentTime(0);
-    }
+    const list = filteredTracks.map(t => t.track);
+    setQueue(list);
+    void play(track, list);
   };
 
-  const handlePlayPause = () => {
-    setIsPlaying(!isPlaying);
-  };
+  const handlePlayPause = () => { void togglePlayPause(); };
 
-  const handleNext = () => {
-    if (!currentTrack) return;
-    const currentIndex = filteredTracks.findIndex(lt => lt.track.id === currentTrack.id);
-    const nextTrack = filteredTracks[currentIndex + 1]?.track;
-    if (nextTrack) {
-      setCurrentTrack(nextTrack);
-      setCurrentTime(0);
-    }
-  };
+  const handleNext = () => { next(); };
 
-  const handlePrevious = () => {
-    if (!currentTrack) return;
-    const currentIndex = filteredTracks.findIndex(lt => lt.track.id === currentTrack.id);
-    const prevTrack = filteredTracks[currentIndex - 1]?.track;
-    if (prevTrack) {
-      setCurrentTrack(prevTrack);
-      setCurrentTime(0);
-    }
-  };
+  const handlePrevious = () => { previous(); };
 
-  const handleSeek = (time: number) => {
-    setCurrentTime(time);
-  };
+  const handleSeek = (time: number) => { seek(time); };
 
-  const handleVolumeChange = (newVolume: number) => {
-    setVolume(newVolume);
-  };
+  const handleVolumeChange = (newVolume: number) => { setVolume(newVolume); };
 
   const handlePlayAll = () => {
     if (filteredTracks.length > 0) {
-      const firstTrack = filteredTracks[0].track;
-      setCurrentTrack(firstTrack);
-      setIsPlaying(true);
-      setCurrentTime(0);
+  const list = filteredTracks.map(t => t.track);
+  setQueue(list);
+  void play(list[0], list);
     }
   };
 
@@ -223,9 +235,9 @@ export default function LikedSongs() {
           title: currentTrack.title,
           artist: currentTrack.artist,
           album: currentTrack.album || 'Unknown Album',
-          duration: currentTrack.duration,
-          audioUrl: currentTrack.audio_url,
-          imageUrl: currentTrack.image_url
+          duration: duration || currentTrack.duration || 0,
+          audioUrl: currentTrack.audio_url || undefined,
+          imageUrl: currentTrack.image_url || undefined
         } : undefined}
         isPlaying={isPlaying}
         onPlayPause={handlePlayPause}

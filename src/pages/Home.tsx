@@ -9,12 +9,28 @@ import { SubscriptionPlans } from "@/components/subscription/SubscriptionPlans";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, Music, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
+import { useAudioPlayer, isPlayableTrack } from "@/hooks/useAudioPlayer";
+import { usePlaybackSync } from "@/hooks/usePlaybackSync";
 
 export default function Home() {
-  const [currentTrack, setCurrentTrack] = useState<any>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [volume, setVolume] = useState(75);
+  const {
+    currentTrack,
+    isPlaying,
+    currentTime,
+    duration,
+    volume,
+    setVolume,
+    play,
+    prime,
+    togglePlayPause,
+    next,
+    previous,
+    seek,
+    setQueue,
+  } = useAudioPlayer();
+
+  // Persist playback heartbeat
+  usePlaybackSync({ trackId: currentTrack?.id, positionSec: currentTime, isPlaying });
   const [tracks, setTracks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showSubscriptionPlans, setShowSubscriptionPlans] = useState(false);
@@ -29,13 +45,29 @@ export default function Home() {
   const loadTracks = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+  const { data, error } = await supabase
         .from('tracks')
         .select('*')
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      setTracks(data || []);
+  // Only include tracks with audio_url or storage_path
+  const filtered = (data || []).filter(isPlayableTrack);
+  setTracks(filtered);
+  setQueue(filtered as any);
+      // Try to resume previous playback state
+      try {
+        const { getPlaybackState } = await import("@/services/playbackService");
+        const state = await getPlaybackState();
+        if (state?.track_id) {
+          const resumeTrack = filtered.find(t => t.id === state.track_id);
+          if (resumeTrack) {
+            await prime(resumeTrack as any, state.position || 0, filtered as any);
+          }
+        }
+      } catch {
+        // ignore resume errors
+      }
     } catch (error) {
       console.error('Error loading tracks:', error);
     } finally {
@@ -44,52 +76,18 @@ export default function Home() {
   };
 
   const handlePlayTrack = (track: any) => {
-    if (currentTrack?.id === track.id) {
-      setIsPlaying(!isPlaying);
-    } else {
-      setCurrentTrack(track);
-      setIsPlaying(true);
-      setCurrentTime(0);
-    }
+    void play(track, tracks as any);
   };
 
-  const handlePlayPause = () => {
-    setIsPlaying(!isPlaying);
-  };
+  const handlePlayPause = () => { void togglePlayPause(); };
 
-  const handleNext = () => {
-    if (!tracks.length) return;
-    
-    // Find current track index
-    const currentIndex = tracks.findIndex(t => t.id === currentTrack?.id);
-    const nextIndex = (currentIndex + 1) % tracks.length;
-    
-    // Set next track
-    setCurrentTrack(tracks[nextIndex]);
-    setCurrentTime(0);
-    setIsPlaying(true);
-  };
+  const handleNext = () => { next(); };
 
-  const handlePrevious = () => {
-    if (!tracks.length) return;
-    
-    // Find current track index
-    const currentIndex = tracks.findIndex(t => t.id === currentTrack?.id);
-    const prevIndex = currentIndex <= 0 ? tracks.length - 1 : currentIndex - 1;
-    
-    // Set previous track
-    setCurrentTrack(tracks[prevIndex]);
-    setCurrentTime(0);
-    setIsPlaying(true);
-  };
+  const handlePrevious = () => { previous(); };
 
-  const handleSeek = (time: number) => {
-    setCurrentTime(time);
-  };
+  const handleSeek = (time: number) => { seek(time); };
 
-  const handleVolumeChange = (newVolume: number) => {
-    setVolume(newVolume);
-  };
+  const handleVolumeChange = (newVolume: number) => { setVolume(newVolume); };
 
   // Handle subscription plan selection
   const handleSelectPlan = async (planId: string, isYearly: boolean) => {
@@ -307,7 +305,15 @@ export default function Home() {
         </main>
 
         <MusicPlayer
-          currentTrack={currentTrack}
+          currentTrack={currentTrack ? {
+            id: currentTrack.id,
+            title: currentTrack.title,
+            artist: currentTrack.artist,
+            album: currentTrack.album,
+            duration: duration || currentTrack.duration || 0,
+            audioUrl: currentTrack.audio_url || undefined,
+            imageUrl: currentTrack.image_url || undefined,
+          } : undefined}
           isPlaying={isPlaying}
           onPlayPause={handlePlayPause}
           onNext={handleNext}
