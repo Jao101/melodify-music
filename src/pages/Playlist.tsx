@@ -1,63 +1,39 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Music, Play, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import type { Tables } from "@/integrations/supabase/types";
+import { ArrowLeft, Music, Play, Trash2, Shuffle } from "lucide-react";
 import { deletePlaylist } from "@/services/playlistService";
-import { useToast } from "@/components/ui/use-toast";
-
-type PlaylistRow = Tables<'playlists'>;
-type TrackRow = Tables<'tracks'>;
-
-type PlaylistTrack = {
-  position: number;
-  added_at: string;
-  track: TrackRow;
-};
+import { useToast } from "@/hooks/use-toast";
+import { usePlaylist } from "@/hooks/usePlaylist";
+import { usePlaylistTracks } from "@/hooks/usePlaylistTracks";
+import { TrackCard } from "@/components/music/TrackCard";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Playlist() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { user } = useAuth();
   const { toast } = useToast();
-  const [playlist, setPlaylist] = useState<PlaylistRow | null>(null);
-  const [tracks, setTracks] = useState<PlaylistTrack[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  
+  const { playlist, loading: playlistLoading, error: playlistError } = usePlaylist(id!);
+  const { tracks, loading: tracksLoading, error: tracksError, removeTrack, refetch } = usePlaylistTracks(id);
+  
+  const loading = playlistLoading || tracksLoading;
+  const error = playlistError || tracksError;
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!id) return;
-      try {
-        setLoading(true);
-        setError(null);
+  const formatDuration = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) {
+      return `${hours}h ${mins}m`;
+    }
+    return `${mins}m`;
+  };
 
-        const [playlistRes, tracksRes] = await Promise.all([
-          supabase.from('playlists').select('*').eq('id', id).maybeSingle(),
-          supabase
-            .from('playlist_tracks')
-            .select('position, added_at, track:tracks(*)')
-            .eq('playlist_id', id)
-            .order('position', { ascending: true }),
-        ]);
-
-        if (playlistRes.error) throw playlistRes.error;
-        if (tracksRes.error) throw tracksRes.error;
-
-        setPlaylist(playlistRes.data as PlaylistRow | null);
-        setTracks((tracksRes.data as any as PlaylistTrack[]) || []);
-      } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : String(e);
-        setError(message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [id]);
+  const isOwner = user?.id === playlist?.owner_id;
 
   const filtered = tracks.filter((pt) =>
     [pt.track.title, pt.track.artist, pt.track.album ?? ""]
@@ -65,6 +41,16 @@ export default function Playlist() {
       .toLowerCase()
       .includes(search.toLowerCase())
   );
+
+  const handleRemoveTrack = async (trackId: string) => {
+    if (!id || !isOwner) return;
+    try {
+      await removeTrack(id, trackId);
+      toast({ title: "Entfernt", description: "Track wurde aus der Playlist entfernt." });
+    } catch (err: any) {
+      toast({ title: "Fehler", description: err.message, variant: "destructive" });
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -85,16 +71,41 @@ export default function Playlist() {
               {playlist?.description && (
                 <p className="text-muted-foreground mt-1">{playlist.description}</p>
               )}
+              <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                {playlist?.owner_display_name && (
+                  <span>Von {playlist.owner_display_name}</span>
+                )}
+                <span>•</span>
+                <span>{playlist?.track_count || 0} Titel</span>
+                {playlist?.total_duration && (
+                  <>
+                    <span>•</span>
+                    <span>{formatDuration(playlist.total_duration)}</span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button className="rounded-full h-10 px-5" disabled={filtered.length === 0}>
+            <Button 
+              className="rounded-full h-10 px-5 focus-visible:ring-2 focus-visible:ring-primary" 
+              disabled={filtered.length === 0}
+              aria-label="Alle Titel abspielen"
+            >
               <Play className="h-4 w-4 mr-2" /> Play All
             </Button>
-            {playlist && (
+            <Button 
+              variant="outline" 
+              className="rounded-full h-10 px-5 focus-visible:ring-2 focus-visible:ring-primary" 
+              disabled={filtered.length === 0}
+              aria-label="Zufällige Wiedergabe"
+            >
+              <Shuffle className="h-4 w-4 mr-2" /> Shuffle
+            </Button>
+            {playlist && isOwner && (
               <Button
                 variant="destructive"
-                className="h-10 px-5"
+                className="h-10 px-5 focus-visible:ring-2 focus-visible:ring-destructive"
                 onClick={async () => {
                   if (!id || !playlist) return;
                   const confirmed = window.confirm(`Playlist "${playlist.name}" löschen? Diese Aktion kann nicht rückgängig gemacht werden.`);
@@ -108,6 +119,7 @@ export default function Playlist() {
                     toast({ title: "Fehler beim Löschen", description: msg, variant: "destructive" });
                   }
                 }}
+                aria-label="Playlist löschen"
               >
                 <Trash2 className="h-4 w-4 mr-2" /> Löschen
               </Button>
@@ -148,20 +160,25 @@ export default function Playlist() {
             <p className="text-muted-foreground">Diese Playlist hat noch keine Titel oder passt nicht zur Suche.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="space-y-2">
             {filtered.map((pt) => (
-              <Card key={`${pt.track.id}-${pt.position}`} className="p-4">
-                <div className="flex items-center gap-4">
-                  <div className="h-16 w-16 rounded bg-secondary/30 flex items-center justify-center overflow-hidden">
-                    {/* Placeholder cover - could use pt.track.image_url when available */}
-                    <Music className="h-6 w-6 text-foreground/80" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold truncate">{pt.track.title}</div>
-                    <div className="text-sm text-muted-foreground truncate">{pt.track.artist}</div>
-                  </div>
-                </div>
-              </Card>
+              <TrackCard
+                key={`${pt.track.id}-${pt.position}`}
+                track={{
+                  id: pt.track.id,
+                  title: pt.track.title,
+                  artist: pt.track.artist,
+                  album: pt.track.album || "",
+                  duration: pt.track.duration,
+                  imageUrl: pt.track.image_url || undefined,
+                  isAI: pt.track.is_ai_generated || false
+                }}
+                onPlay={() => {
+                  // TODO: Implement play functionality
+                }}
+                onRemove={() => handleRemoveTrack(pt.track.id)}
+                showRemove={isOwner}
+              />
             ))}
           </div>
         )}

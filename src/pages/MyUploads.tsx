@@ -20,6 +20,8 @@ export default function MyUploads() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [userTracks, setUserTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
@@ -62,9 +64,36 @@ export default function MyUploads() {
     fetchUserTracks();
   }, [user]);
 
+  // Validate file
+  const validateFile = (file: File): string | null => {
+    const allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/flac', 'audio/ogg', 'audio/mp3'];
+    const maxSize = 25 * 1024 * 1024; // 25MB
+    
+    if (!allowedTypes.includes(file.type)) {
+      return "Dateityp nicht unterstützt. Erlaubt: MP3, WAV, FLAC, OGG";
+    }
+    
+    if (file.size > maxSize) {
+      return "Datei zu groß. Maximum: 25MB";
+    }
+    
+    return null;
+  };
+
   // Handle file selection and auto-fill title
   const handleFileSelect = (file: File) => {
+    const validationError = validateFile(file);
+    if (validationError) {
+      toast({
+        title: "Ungültige Datei",
+        description: validationError,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setSelectedFile(file);
+    setUploadError(null);
     
     // Auto-fill title from filename (remove extension and clean up)
     const fileName = file.name;
@@ -99,20 +128,27 @@ export default function MyUploads() {
     }
 
     setUploading(true);
+    setUploadProgress(0);
+    setUploadError(null);
     
     try {
-      // Upload audio file
+      // Upload audio file with progress
       const audioFileName = `${user.id}/${Date.now()}-${selectedFile.name}`;
+      setUploadProgress(25);
+      
       const { data: audioData, error: audioError } = await supabase.storage
         .from('user-songs')
         .upload(audioFileName, selectedFile);
 
       if (audioError) throw audioError;
+      setUploadProgress(50);
 
       // Get public URL for the audio file
       const { data: { publicUrl: audioUrl } } = supabase.storage
         .from('user-songs')
         .getPublicUrl(audioFileName);
+      
+      setUploadProgress(75);
 
       // Create track entry in database
       const { data: trackData, error: trackError } = await supabase
@@ -132,6 +168,7 @@ export default function MyUploads() {
         .single();
 
       if (trackError) throw trackError;
+      setUploadProgress(100);
 
       toast({
         title: "Erfolg",
@@ -144,6 +181,7 @@ export default function MyUploads() {
       setTrackAlbum("");
       setTrackGenre("");
       setSelectedFile(null);
+      setUploadProgress(0);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -152,14 +190,22 @@ export default function MyUploads() {
       fetchUserTracks();
 
     } catch (error: any) {
+      const errorMessage = "Upload fehlgeschlagen: " + error.message;
+      setUploadError(errorMessage);
       toast({
         title: "Fehler",
-        description: "Upload fehlgeschlagen: " + error.message,
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
+  };
+
+  const retryUpload = () => {
+    setUploadError(null);
+    handleUpload();
   };
 
   const handleDeleteTrack = async (trackId: string) => {
@@ -245,7 +291,7 @@ export default function MyUploads() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="audio/*"
+                accept="audio/mpeg,audio/wav,audio/flac,audio/ogg,audio/mp3"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) handleFileSelect(file);
@@ -267,22 +313,58 @@ export default function MyUploads() {
             </div>
             
             {selectedFile && (
-              <div className="flex items-center gap-4 p-4 bg-secondary/20 rounded-lg">
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Ausgewählte Datei:</p>
-                  <p className="text-sm text-muted-foreground">{selectedFile.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                  </p>
+              <div className="space-y-4 p-4 bg-secondary/20 rounded-lg">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">Ausgewählte Datei:</p>
+                    <p className="text-sm text-muted-foreground">{selectedFile.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {uploadError && (
+                      <Button
+                        onClick={retryUpload}
+                        variant="outline"
+                        className="flex items-center gap-2"
+                        disabled={uploading}
+                      >
+                        Erneut versuchen
+                      </Button>
+                    )}
+                    <Button
+                      onClick={handleUpload}
+                      disabled={uploading || !trackTitle || !trackArtist}
+                      className="flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-primary"
+                      aria-label="Song hochladen"
+                    >
+                      <Upload className="h-4 w-4" />
+                      {uploading ? "Uploading..." : "Song hochladen"}
+                    </Button>
+                  </div>
                 </div>
-                <Button
-                  onClick={handleUpload}
-                  disabled={uploading || !trackTitle || !trackArtist}
-                  className="flex items-center gap-2"
-                >
-                  <Upload className="h-4 w-4" />
-                  {uploading ? "Uploading..." : "Song hochladen"}
-                </Button>
+                
+                {uploading && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Upload läuft...</span>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div 
+                        className="bg-primary h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                
+                {uploadError && (
+                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+                    <p className="text-sm text-destructive">{uploadError}</p>
+                  </div>
+                )}
               </div>
             )}
           </div>

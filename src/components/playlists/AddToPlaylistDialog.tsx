@@ -13,11 +13,23 @@ interface AddToPlaylistDialogProps {
   onAdded?: () => void;
   trigger?: React.ReactNode;
   className?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export default function AddToPlaylistDialog({ trackId, onAdded, trigger, className }: AddToPlaylistDialogProps) {
+export default function AddToPlaylistDialog({ 
+  trackId, 
+  onAdded, 
+  trigger, 
+  className, 
+  open: controlledOpen, 
+  onOpenChange: controlledOnOpenChange 
+}: AddToPlaylistDialogProps) {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = controlledOnOpenChange || setInternalOpen;
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>("");
   const { playlists, refetch, loading } = useUserPlaylists();
   const { addTrack, loading: saving } = usePlaylistTracks();

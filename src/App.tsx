@@ -75,7 +75,7 @@ const App = () => (
               } 
             />
             <Route 
-              path="/playlists/:id" 
+              path="/playlist/:id" 
               element={
                 <ProtectedRoute>
                   <Playlist />

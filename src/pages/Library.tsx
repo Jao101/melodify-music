@@ -195,7 +195,7 @@ export default function Library() {
           ) : playlists.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {playlists.map((pl) => (
-                <Card key={pl.id} className="music-card p-6 cursor-pointer transition-all duration-300 hover:scale-[1.02]" onClick={() => navigate(`/playlists/${pl.id}`)}>
+                <Card key={pl.id} className="music-card p-6 cursor-pointer transition-all duration-300 hover:scale-[1.02]" onClick={() => navigate(`/playlist/${pl.id}`)}>
                   <div className="space-y-3">
                     <div className="h-32 w-full rounded-lg bg-gradient-to-br from-primary/30 to-secondary/30 flex items-center justify-center mb-2">
                       <Music className="h-10 w-10 text-foreground/80" />

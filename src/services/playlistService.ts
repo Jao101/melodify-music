@@ -34,6 +34,17 @@ export async function addTrackToPlaylist(playlistId: string, trackId: string) {
   return { alreadyExists: false, data } as const;
 }
 
+export async function removeTrackFromPlaylist(playlistId: string, trackId: string) {
+  const { error } = await supabase
+    .from("playlist_tracks")
+    .delete()
+    .eq("playlist_id", playlistId)
+    .eq("track_id", trackId);
+
+  if (error) throw error;
+  return { success: true } as const;
+}
+
 export async function deletePlaylist(playlistId: string) {
   const { error } = await supabase
     .from("playlists")
