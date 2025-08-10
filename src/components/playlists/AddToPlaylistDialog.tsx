@@ -97,10 +97,13 @@ export default function AddToPlaylistDialog({
             <CreatePlaylistDialog
               mode="button"
               className="w-full"
-              onCreated={async () => {
+              onCreated={async (created) => {
                 await refetch();
-                if (playlists && playlists.length > 0) {
-                  // Preselect the most recent
+                // Prefer selecting the newly created playlist if available
+                if (created?.id) {
+                  setSelectedPlaylistId(created.id);
+                } else if (playlists && playlists.length > 0) {
+                  // Fallback: preselect the first in refreshed list
                   setSelectedPlaylistId(playlists[0].id);
                 }
               }}

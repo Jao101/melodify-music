@@ -113,7 +113,7 @@ export default function Library() {
           </div>
           
           <div className="flex items-center gap-2">
-            <CreatePlaylistDialog mode="icon" onCreated={refetchPlaylists} />
+            <CreatePlaylistDialog mode="icon" onCreated={async () => { await refetchPlaylists(); }} />
           </div>
         </div>
 
@@ -234,7 +234,7 @@ export default function Library() {
           ) : (
             <div className="text-center p-8 border border-dashed rounded-lg">
               <p className="text-muted-foreground mb-4">Du hast noch keine Playlists.</p>
-              <CreatePlaylistDialog mode="button" onCreated={refetchPlaylists} />
+              <CreatePlaylistDialog mode="button" onCreated={async () => { await refetchPlaylists(); }} />
             </div>
           )}
         </div>

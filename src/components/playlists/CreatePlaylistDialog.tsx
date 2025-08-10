@@ -7,10 +7,14 @@ import { Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import type { Tables } from "@/integrations/supabase/types";
+
+type PlaylistRow = Tables<'playlists'>;
 
 interface CreatePlaylistDialogProps {
   mode?: "icon" | "button";
-  onCreated?: () => void;
+  // Passes back the created playlist; remains optional for backwards compatibility
+  onCreated?: (playlist?: PlaylistRow) => void;
   className?: string;
 }
 
@@ -40,7 +44,8 @@ export default function CreatePlaylistDialog({ mode = "icon", onCreated, classNa
       setOpen(false);
       setName("");
       setDescription("");
-      onCreated?.();
+      // Pass the created playlist back to the caller so it can preselect it
+      onCreated?.(data as PlaylistRow);
     }
     setSaving(false);
   };
