@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback, createContext, useContext } from "react";
 import type { ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { getPlaybackState, upsertPlaybackState, testPlaybackState } from "@/services/playbackService";
-import { useAuth } from "@/contexts/AuthContext";
-import type { Json, Tables } from "@/integrations/supabase/types";
+import { supabase } from "../integrations/supabase/client";
+import { getPlaybackState, upsertPlaybackState, testPlaybackState } from "../services/playbackService";
+import { useAuth } from "../contexts/AuthContext";
+import type { Json, Tables } from "../integrations/supabase/types";
 
 export type BaseTrack = {
   id: string;
@@ -69,6 +69,7 @@ type PlayerAPI = {
   next: () => void;
   previous: () => void;
   seek: (time: number) => void;
+  stop: () => void;
 };
 
 const AudioPlayerContext = createContext<PlayerAPI | undefined>(undefined);
@@ -139,11 +140,25 @@ function useProvideAudioPlayer(): PlayerAPI {
     saveLocalQueue(q);
     // Immediately sync to DB when queue changes
     if (user) {
-      import("@/services/playbackService").then(({ setPlaybackQueue }) => {
+      import("../services/playbackService").then(({ setPlaybackQueue }) => {
         void setPlaybackQueue(q.map(t => t.id)).catch(() => {});
       }).catch(() => {});
     }
   }, [saveLocalQueue, user]);
+
+  // Stop function für Media Session API
+  const stop = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setIsPlaying(false);
+    setCurrentTime(0);
+    if (currentTrack) {
+      saveLocalState({ track: currentTrack, position: 0 });
+      if (user) upsertPlaybackState(currentTrack.id, 0).catch(() => {});
+    }
+  }, [currentTrack, saveLocalState, user]);
 
   // Initialize audio element once
   useEffect(() => {
@@ -225,7 +240,7 @@ function useProvideAudioPlayer(): PlayerAPI {
       el.removeEventListener("pause", onPause);
       el.pause();
     };
-  }, [volume, isPlaying, currentTrack, user, saveLocalState]);
+  }, [volume, isPlaying, currentTrack, user, saveLocalState, duration]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume / 100;
@@ -287,6 +302,76 @@ function useProvideAudioPlayer(): PlayerAPI {
       saveLocalState({ track: currentTrack, position: currentTime });
     }
   }, [isPlaying, currentTrack, currentTime, user, saveLocalState]);
+
+  // Media Session API für Hardware-Medientasten und Tab-Titel mit Laufschrift
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    const ms = (navigator as any).mediaSession;
+    try {
+      ms.setActionHandler('play', async () => {
+        if (audioRef.current) {
+          await audioRef.current.play().catch(() => {});
+          setIsPlaying(true);
+        }
+      });
+      ms.setActionHandler('pause', () => {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          setIsPlaying(false);
+        }
+      });
+      ms.setActionHandler('stop', () => {
+        stop();
+      });
+      ms.setActionHandler('previoustrack', () => {
+        previous();
+      });
+      ms.setActionHandler('nexttrack', () => {
+        next();
+      });
+      ms.setActionHandler('seekbackward', (details: any) => {
+        const step = details?.seekOffset || 10;
+        if (audioRef.current) seek(Math.max(0, audioRef.current.currentTime - step));
+      });
+      ms.setActionHandler('seekforward', (details: any) => {
+        const step = details?.seekOffset || 10;
+        if (audioRef.current) seek(audioRef.current.currentTime + step);
+      });
+      ms.setActionHandler('seekto', (details: any) => {
+        if (audioRef.current && typeof details.seekTime === 'number') seek(details.seekTime);
+      });
+
+      // Media Session Metadata für bessere Integration
+      if (currentTrack) {
+        ms.metadata = new MediaMetadata({
+          title: currentTrack.title || 'Unknown Title',
+          artist: currentTrack.artist || 'Unknown Artist',
+          album: currentTrack.album || 'Unknown Album',
+          artwork: currentTrack.image_url ? [
+            { src: currentTrack.image_url, sizes: '512x512', type: 'image/jpeg' }
+          ] : []
+        });
+      }
+    } catch {
+      // ignore errors
+    }
+  }, [stop, currentTrack]);
+
+  // Einfacher statischer Tab-Titel (Laufschrift deaktiviert)
+  useEffect(() => {
+    const originalTitle = "Melodify";
+
+    if (currentTrack && isPlaying) {
+      // Zeige einfach den Track-Titel
+      document.title = `▶ ${currentTrack.artist || 'Unknown Artist'} - ${currentTrack.title || 'Unknown Title'} | ${originalTitle}`;
+    } else if (currentTrack && !isPlaying) {
+      // Pausiert - zeige statischen Titel
+      document.title = `⏸ ${currentTrack.artist || 'Unknown Artist'} - ${currentTrack.title || 'Unknown Title'} | ${originalTitle}`;
+    } else {
+      // Kein Track - zeige normalen Titel
+      document.title = originalTitle;
+    }
+  }, [currentTrack, isPlaying]);
 
   // Try to restore from local state on mount (without starting playback)
   useEffect(() => {
@@ -514,7 +599,7 @@ function useProvideAudioPlayer(): PlayerAPI {
       console.error('❌ Error playing track:', error);
       setIsPlaying(false);
     }
-  }, [setQueue, saveLocalState, user, volume]);
+  }, [setQueue, saveLocalState, user, volume, duration]);
 
   const prime = useCallback(async (track: BaseTrack, positionSec: number, list?: BaseTrack[]) => {
     if (!isPlayableTrack(track)) return;
@@ -682,22 +767,6 @@ function useProvideAudioPlayer(): PlayerAPI {
     };
   }, [next]);
 
-  // Media Session action handlers for OS media keys
-  useEffect(() => {
-    if (!('mediaSession' in navigator)) return;
-    const ms = (navigator as any).mediaSession;
-    try {
-      ms.setActionHandler('play', async () => { if (audioRef.current) await audioRef.current.play().catch(() => {}); });
-      ms.setActionHandler('pause', () => { audioRef.current?.pause(); });
-      ms.setActionHandler('stop', () => { if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; } });
-      ms.setActionHandler('previoustrack', () => { previous(); });
-      ms.setActionHandler('nexttrack', () => { next(); });
-      ms.setActionHandler('seekbackward', (details: any) => { const step = details?.seekOffset || 10; if (audioRef.current) seek(Math.max(0, audioRef.current.currentTime - step)); });
-      ms.setActionHandler('seekforward', (details: any) => { const step = details?.seekOffset || 10; if (audioRef.current) seek(audioRef.current.currentTime + step); });
-      ms.setActionHandler('seekto', (details: any) => { if (audioRef.current && typeof details.seekTime === 'number') seek(details.seekTime); });
-    } catch { /* ignore */ }
-  }, [next, previous, seek]);
-
   return { 
     currentTrack, 
     isPlaying, 
@@ -712,7 +781,8 @@ function useProvideAudioPlayer(): PlayerAPI {
     togglePlayPause, 
     next, 
     previous, 
-    seek 
+    seek,
+    stop
   };
 }
 
