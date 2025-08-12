@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Upload, Music, ArrowLeft, Trash2 } from "lucide-react";
+import { Upload, Music, ArrowLeft, Trash2, Globe, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -45,7 +45,7 @@ export default function MyUploads() {
       const { data, error } = await supabase
         .from('tracks')
         .select('*')
-        .eq('generated_by', user.id)
+        .or(`user_id.eq.${user.id},generated_by.eq.${user.id}`)
         .eq('user_uploaded', true)
         .order('created_at', { ascending: false });
 
@@ -67,6 +67,40 @@ export default function MyUploads() {
     fetchUserTracks();
   }, [fetchUserTracks]);
 
+  // Toggle track public status
+  const toggleTrackPublic = async (track: Track, isPublic: boolean) => {
+    if (!user || ((track as any).user_id !== user.id && (track as any).generated_by !== user.id)) {
+      toast({
+        title: "Fehler",
+        description: "Du kannst nur deine eigenen Tracks ändern",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('tracks')
+        .update({ is_public: isPublic })
+        .eq('id', track.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Erfolg",
+        description: `Track ${isPublic ? 'öffentlich gemacht' : 'privat gemacht'}`,
+      });
+
+      // Refresh tracks
+      await fetchUserTracks();
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: "Status konnte nicht geändert werden: " + error.message,
+        variant: "destructive",
+      });
+    }
+  };
   
   const handleTrackPlay = async (track: Track) => {
     try {
@@ -562,7 +596,7 @@ export default function MyUploads() {
                     artist: track.artist,
                     album: track.album || "",
                     duration: track.duration,
-                    imageUrl: track.image_url || undefined
+                    imageUrl: track.artwork_url || undefined
                   }}
                   onPlay={() => handleTrackPlay(track)}
                   isCurrentTrack={currentTrack?.id === track.id}
@@ -574,13 +608,26 @@ export default function MyUploads() {
                     <Button
                       variant="outline"
                       size="icon"
-                      className="absolute top-2 right-12 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8"
+                      className="absolute top-2 right-24 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8"
                       title="Zur Playlist hinzufügen"
                     >
                       <ListPlus className="h-4 w-4" />
                     </Button>
                   }
                 />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="absolute top-2 right-12 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8"
+                  onClick={() => toggleTrackPublic(track, !(track as any).is_public)}
+                  title={(track as any).is_public ? "Privat machen" : "Öffentlich machen"}
+                >
+                  {(track as any).is_public ? (
+                    <Lock className="h-4 w-4" />
+                  ) : (
+                    <Globe className="h-4 w-4" />
+                  )}
+                </Button>
                 <Button
                   variant="destructive"
                   size="icon"

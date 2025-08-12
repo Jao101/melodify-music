@@ -17,6 +17,7 @@ import { UserProfileMenu } from "@/components/profile/UserProfileMenu";
 const mainNavItems = [
   { title: "Home", url: "/", icon: Home },
   { title: "My Uploads", url: "/my-uploads", icon: Upload },
+  { title: "Public Tracks", url: "/public-tracks", icon: Globe },
 ];
 
 // Platzhalter für zukünftige Funktionen
@@ -32,7 +33,7 @@ const quickLinks = [
 const discoverLinks = [
   { title: "Explore", icon: Compass, soon: true },
   { title: "Latest Releases", icon: Clock, soon: true },
-  { title: "Charts", icon: Globe, soon: true },
+  { title: "Charts", icon: Music, soon: true },
 ];
 
 export function AppSidebar({ onShowSubscriptionPlans }: { onShowSubscriptionPlans?: () => void }) {

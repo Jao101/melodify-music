@@ -197,6 +197,15 @@ export type Database = {
           file_url: string
           artwork_url: string | null
           user_id: string
+          generated_by: string | null
+          is_public: boolean
+          user_uploaded: boolean | null
+          is_ai_generated: boolean | null
+          genre: string | null
+          metadata: Json | null
+          original_artist: string | null
+          enhanced_at: string | null
+          enhancement_source: string | null
           created_at: string
           updated_at: string
         }
@@ -209,6 +218,15 @@ export type Database = {
           file_url: string
           artwork_url?: string | null
           user_id: string
+          generated_by?: string | null
+          is_public?: boolean
+          user_uploaded?: boolean | null
+          is_ai_generated?: boolean | null
+          genre?: string | null
+          metadata?: Json | null
+          original_artist?: string | null
+          enhanced_at?: string | null
+          enhancement_source?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -221,6 +239,15 @@ export type Database = {
           file_url?: string
           artwork_url?: string | null
           user_id?: string
+          generated_by?: string | null
+          is_public?: boolean
+          user_uploaded?: boolean | null
+          is_ai_generated?: boolean | null
+          genre?: string | null
+          metadata?: Json | null
+          original_artist?: string | null
+          enhanced_at?: string | null
+          enhancement_source?: string | null
           created_at?: string
           updated_at?: string
         }

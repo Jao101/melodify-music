@@ -19,17 +19,43 @@ export type BaseTrack = {
 
 export function isPlayableTrack(t: BaseTrack | undefined | null): boolean {
   if (!t) return false;
+  
   const hasAudioUrl = !!t.audio_url;
+  const hasFileUrl = !!(t as any).file_url; // Support for file_url from Supabase tracks
+  
   const hasStoragePath = (() => {
     const m = t?.metadata;
     if (!m || typeof m !== 'object' || Array.isArray(m)) return false;
     const val = (m as Record<string, unknown>)["storage_path"];
     return typeof val === 'string' && val.length > 0;
   })();
-  return hasAudioUrl || hasStoragePath;
+  
+  const isPlayable = hasAudioUrl || hasFileUrl || hasStoragePath;
+  
+  console.log('🔍 isPlayableTrack check:', {
+    trackId: t.id,
+    title: t.title,
+    hasAudioUrl,
+    hasFileUrl,
+    hasStoragePath,
+    isPlayable,
+    audio_url: t.audio_url,
+    file_url: (t as any).file_url
+  });
+  
+  return isPlayable;
 }
 
 async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
+  // Get the audio URL - could be audio_url or file_url depending on the data source
+  const audioUrl = track.audio_url || (track as any).file_url;
+  
+  // If we have a direct URL and it's a public URL, use it directly
+  if (audioUrl && audioUrl.includes('/object/public/')) {
+    console.log('✅ Using direct public URL:', audioUrl);
+    return audioUrl;
+  }
+  
   // For private bucket files, create signed URL using stored path
   const storagePath: string | undefined = (() => {
     const m = track?.metadata;
@@ -37,21 +63,60 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
     const val = (m as Record<string, unknown>)["storage_path"];
     return typeof val === 'string' ? val : undefined;
   })();
+  
+  // For user uploaded tracks (both own and public tracks from others)
   if (track.user_uploaded) {
     let path = storagePath;
-    if (!path && track.audio_url) {
+    
+    if (!path && audioUrl) {
       const marker = "/user-songs/";
-      const idx = track.audio_url.indexOf(marker);
+      const idx = audioUrl.indexOf(marker);
       if (idx !== -1) {
-        path = track.audio_url.substring(idx + marker.length);
+        path = audioUrl.substring(idx + marker.length);
       }
     }
+    
+    // If no path found, try to construct one from the track ID
+    if (!path && track.id) {
+      // Try common file extensions for uploaded tracks
+      const possibleExtensions = ['mp3', 'wav', 'flac', 'm4a', 'ogg'];
+      
+      for (const ext of possibleExtensions) {
+        const constructedPath = `${(track as any).user_id || (track as any).generated_by}/${track.id}.${ext}`;
+        console.log(`🔍 Trying constructed path: ${constructedPath}`);
+        
+        try {
+          const { data, error } = await supabase.storage.from("user-songs").createSignedUrl(constructedPath, 60 * 60);
+          if (data?.signedUrl && !error) {
+            console.log(`✅ Created signed URL with constructed path (${ext}):`, data.signedUrl);
+            return data.signedUrl;
+          }
+        } catch (err) {
+          console.log(`❌ Failed to create signed URL for ${ext}:`, err);
+          continue;
+        }
+      }
+    }
+    
     if (path) {
-      const { data } = await supabase.storage.from("user-songs").createSignedUrl(path, 60 * 60);
-      if (data?.signedUrl) return data.signedUrl;
+      // Try to create signed URL - this will work for own tracks and public tracks (with new storage policy)
+      try {
+        const { data, error } = await supabase.storage.from("user-songs").createSignedUrl(path, 60 * 60);
+        if (data?.signedUrl && !error) {
+          console.log('✅ Created signed URL for track:', track.id);
+          return data.signedUrl;
+        }
+        // If signed URL creation fails, fall back to direct audio_url
+        console.warn('⚠️ Failed to create signed URL for track:', track.id, error);
+      } catch (err) {
+        console.warn('🚨 Error creating signed URL for track:', track.id, err);
+      }
     }
   }
-  return track.audio_url ?? null;
+  
+  // Fall back to direct URL
+  console.log('📁 Using fallback URL for track:', track.id, audioUrl);
+  return audioUrl ?? null;
 }
 
 type PlayerAPI = {
@@ -513,18 +578,26 @@ function useProvideAudioPlayer(): PlayerAPI {
   }, [user, loadLocalQueue]);
 
   const play = useCallback(async (track: BaseTrack, list?: BaseTrack[]) => {
-    console.log('🎵 Play function called with track:', track.title);
+    console.log('🎵 Play function called with track:', {
+      id: track.id,
+      title: track.title,
+      user_uploaded: track.user_uploaded,
+      audio_url: track.audio_url,
+      file_url: (track as any).file_url,
+      metadata: track.metadata
+    });
     
     if (!isPlayableTrack(track)) {
-      console.warn('Track is not playable:', track);
-      return;
+      console.error('🚨 Track is not playable:', track);
+      throw new Error('Track is not playable - missing audio URL');
     }
 
     try {
+      console.log('🔄 Resolving playable URL...');
       const url = await resolvePlayableUrl(track);
       if (!url) {
-        console.error('Could not resolve playable URL for track:', track);
-        return;
+        console.error('🚨 Could not resolve playable URL for track:', track);
+        throw new Error('Could not resolve playable URL');
       }
 
       console.log('✅ Resolved URL:', url);
@@ -570,6 +643,33 @@ function useProvideAudioPlayer(): PlayerAPI {
         };
 
         await waitForMetadata();
+        
+        // Restore saved position for this track if it exists
+        try {
+          if (user) {
+            const state = await getPlaybackState();
+            if (state?.track_id === track.id && state.position > 0) {
+              console.log('⏰ Restoring saved position from database:', state.position);
+              audioRef.current.currentTime = state.position;
+              setCurrentTime(state.position);
+            }
+          } else {
+            // Fallback to localStorage if not logged in
+            const CACHE_KEY = "player_state_v1";
+            const saved = localStorage.getItem(CACHE_KEY);
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (parsed?.track?.id === track.id && parsed?.position > 0) {
+                console.log('⏰ Restoring saved position from localStorage:', parsed.position);
+                audioRef.current.currentTime = parsed.position;
+                setCurrentTime(parsed.position);
+              }
+            }
+          }
+        } catch (error) {
+          console.log('⚠️ Could not restore saved position:', error);
+        }
+        
         await audioRef.current.play();
         setIsPlaying(true);
         

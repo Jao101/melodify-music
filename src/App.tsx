@@ -12,6 +12,7 @@ import Library from "./pages/Library";
 import LikedSongs from "./pages/LikedSongs";
 import NotFound from "./pages/NotFound";
 import MyUploads from "./pages/MyUploads";
+import PublicTracks from "./pages/PublicTracks";
 import Playlist from "./pages/Playlist";
 import AccountSettings from "./pages/AccountSettings";
 import NotificationSettingsPage from "./pages/NotificationSettings";
@@ -150,6 +151,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <MyUploads />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/public-tracks" 
+              element={
+                <ProtectedRoute>
+                  <PublicTracks />
                 </ProtectedRoute>
               } 
             />
