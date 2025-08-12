@@ -7,11 +7,21 @@ export class NextcloudService {
   constructor() {
     this.baseUrl = import.meta.env.VITE_NEXTCLOUD_BASE_URL || 'https://alpenview.ch';
     this.username = import.meta.env.VITE_NEXTCLOUD_USERNAME || 'admin';
-    this.password = import.meta.env.VITE_NEXTCLOUD_PASSWORD || '';
+    this.password = import.meta.env.VITE_NEXTCLOUD_PASSWORD || '9xHKC-WpYfd-4GwXB-HeXac-2p3as';
     this.webdavUrl = `${this.baseUrl}/remote.php/dav/files/${this.username}`;
     
+    // Debug logging
+    console.log('🔧 NextcloudService initialized:', {
+      baseUrl: this.baseUrl,
+      username: this.username,
+      hasPassword: !!this.password,
+      webdavUrl: this.webdavUrl
+    });
+    
     if (!this.baseUrl || !this.username || !this.password) {
-      throw new Error('Nextcloud configuration missing. Please check environment variables.');
+      const error = `Nextcloud configuration missing. Base: ${!!this.baseUrl}, User: ${!!this.username}, Pass: ${!!this.password}`;
+      console.error('❌', error);
+      throw new Error(error);
     }
   }
   
@@ -52,11 +62,15 @@ export class NextcloudService {
     onProgress?: (progress: number) => void
   ): Promise<{ success: boolean; url?: string; error?: string }> {
     try {
+      console.log('📤 Starting Nextcloud upload:', filename);
+      
       // Ensure audio directory exists
-      await this.createDirectory('audio');
+      const dirCreated = await this.createDirectory('audio');
+      console.log('📁 Audio directory ready:', dirCreated);
       
       const uploadPath = `audio/${filename}`;
       const uploadUrl = `${this.webdavUrl}/${uploadPath}`;
+      console.log('🔗 Upload URL:', uploadUrl);
       
       // Create XMLHttpRequest for progress tracking
       return new Promise((resolve) => {
@@ -65,30 +79,56 @@ export class NextcloudService {
         xhr.upload.addEventListener('progress', (event) => {
           if (event.lengthComputable && onProgress) {
             const progress = (event.loaded / event.total) * 100;
+            console.log('📊 Upload progress:', Math.round(progress) + '%');
             onProgress(Math.round(progress));
           }
         });
         
         xhr.addEventListener('load', () => {
+          console.log('📤 Upload completed with status:', xhr.status);
           if (xhr.status >= 200 && xhr.status < 300) {
+            const fileUrl = `${this.baseUrl}/remote.php/dav/files/${this.username}/${uploadPath}`;
+            console.log('✅ Upload successful, file URL:', fileUrl);
             resolve({
               success: true,
-              url: `${this.baseUrl}/remote.php/dav/files/${this.username}/${uploadPath}`
+              url: fileUrl
             });
           } else {
+            const error = `Upload failed with status ${xhr.status}: ${xhr.responseText}`;
+            console.error('❌ Upload failed:', error);
             resolve({
               success: false,
-              error: `Upload failed with status ${xhr.status}`
+              error
             });
           }
         });
         
-        xhr.addEventListener('error', () => {
+        xhr.addEventListener('error', (event) => {
+          const error = 'Network error during upload';
+          console.error('❌ Network error:', event);
           resolve({
             success: false,
-            error: 'Network error during upload'
+            error
           });
         });
+        
+        xhr.addEventListener('timeout', () => {
+          const error = 'Upload timeout';
+          console.error('❌ Upload timeout');
+          resolve({
+            success: false,
+            error
+          });
+        });
+        
+        xhr.open('PUT', uploadUrl);
+        xhr.setRequestHeader('Authorization', `Basic ${btoa(`${this.username}:${this.password}`)}`);
+        xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+        xhr.timeout = 120000; // 2 minute timeout
+        
+        console.log('🚀 Starting XMLHttpRequest upload...');
+        xhr.send(file);
+      });
         
         xhr.open('PUT', uploadUrl);
         xhr.setRequestHeader('Authorization', `Basic ${btoa(`${this.username}:${this.password}`)}`);
