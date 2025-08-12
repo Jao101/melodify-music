@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Upload, Music, ArrowLeft, Trash2, Globe, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,6 +17,7 @@ import { ListPlus } from "lucide-react";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { getUploadsPlaylistName } from "@/services/playlistService";
 import { ensureUploadsPlaylist, addTrackToPlaylist } from "@/services/playlistService";
+import { NextcloudService } from "@/services/nextcloudService";
 // removed duplicate import above
 
 export default function MyUploads() {
@@ -30,6 +33,10 @@ export default function MyUploads() {
   const [loading, setLoading] = useState(true);
   const { currentTrack, isPlaying, play, setQueue } = useAudioPlayer();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  
+  // Upload strategy
+  const [useNextcloud, setUseNextcloud] = useState(false);
+  const [nextcloudStatus, setNextcloudStatus] = useState<string>("");
   
   // Track metadata for upload
   const [trackTitle, setTrackTitle] = useState("");
@@ -223,13 +230,51 @@ export default function MyUploads() {
 
       try {
         const audioFileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${file.name}`;
-        // Coarse overall progress: step through phases per file
-        setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 5)));
-        const { error: audioError } = await supabase.storage.from('user-songs').upload(audioFileName, file);
-        if (audioError) throw audioError;
+        let audioUrl = '';
+        
+        // Upload strategy: Nextcloud or Supabase
+        if (useNextcloud) {
+          setNextcloudStatus(`Uploading ${file.name} to Nextcloud...`);
+          try {
+            const nextcloud = new NextcloudService();
+            const result = await nextcloud.uploadAndShare(
+              file, 
+              audioFileName.replace(/\//g, '_'), // Replace slashes for Nextcloud filename
+              (progress) => {
+                setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + (progress * 0.8) / total)));
+              }
+            );
+            
+            if (!result.success) {
+              throw new Error(`Nextcloud upload failed: ${result.error}`);
+            }
+            
+            audioUrl = result.downloadUrl!;
+            setNextcloudStatus(`✅ Uploaded to Nextcloud: ${file.name}`);
+          } catch (nextcloudError) {
+            setNextcloudStatus(`❌ Nextcloud failed: ${nextcloudError}`);
+            // Fallback to Supabase
+            setNextcloudStatus(`📦 Falling back to Supabase for ${file.name}...`);
+            setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 5)));
+            const { error: audioError } = await supabase.storage.from('user-songs').upload(audioFileName, file);
+            if (audioError) throw audioError;
+            
+            setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 30)));
+            const { data: { publicUrl } } = supabase.storage.from('user-songs').getPublicUrl(audioFileName);
+            audioUrl = publicUrl;
+          }
+        } else {
+          // Standard Supabase upload
+          setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 5)));
+          const { error: audioError } = await supabase.storage.from('user-songs').upload(audioFileName, file);
+          if (audioError) throw audioError;
 
-        setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 30)));
-        const { data: { publicUrl: audioUrl } } = supabase.storage.from('user-songs').getPublicUrl(audioFileName);
+          setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 30)));
+          const { data: { publicUrl } } = supabase.storage.from('user-songs').getPublicUrl(audioFileName);
+          audioUrl = publicUrl;
+        }
+
+        setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 60)));
 
         setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 60)));
         const { data: inserted, error: trackError } = await supabase
@@ -427,6 +472,31 @@ export default function MyUploads() {
               value={trackGenre}
               onChange={(e) => setTrackGenre(e.target.value)}
             />
+          </div>
+          
+          {/* Upload Strategy Selection */}
+          <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <h4 className="text-sm font-medium text-blue-900">Upload-Strategie</h4>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="nextcloud-upload"
+                checked={useNextcloud}
+                onCheckedChange={setUseNextcloud}
+              />
+              <Label htmlFor="nextcloud-upload" className="text-sm">
+                Nextcloud verwenden (kostenlos, reduziert Supabase-Egress)
+              </Label>
+            </div>
+            {useNextcloud && (
+              <div className="text-xs text-blue-700 bg-blue-100 p-2 rounded">
+                <strong>Nextcloud Mode:</strong> Dateien werden auf alpenview.ch gespeichert und über öffentliche Links verfügbar gemacht. Dies reduziert die Supabase Storage-Kosten erheblich.
+              </div>
+            )}
+            {nextcloudStatus && (
+              <div className="text-xs font-mono bg-gray-100 p-2 rounded">
+                {nextcloudStatus}
+              </div>
+            )}
           </div>
           
           <div className="space-y-4">

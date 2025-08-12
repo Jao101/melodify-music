@@ -50,10 +50,40 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
   // Get the audio URL - could be audio_url or file_url depending on the data source
   const audioUrl = track.audio_url || (track as any).file_url;
   
-  // If we have a direct URL and it's a public URL, use it directly
+  console.log('🔍 resolvePlayableUrl for track:', {
+    id: track.id,
+    title: track.title,
+    audio_url: track.audio_url,
+    file_url: (track as any).file_url,
+    finalAudioUrl: audioUrl,
+    user_uploaded: track.user_uploaded
+  });
+  
+  // If we have a direct URL and it's a public URL, try to use it directly
   if (audioUrl && audioUrl.includes('/object/public/')) {
-    console.log('✅ Using direct public URL:', audioUrl);
-    return audioUrl;
+    // Extract the path from the public URL to create a signed URL instead
+    const marker = "/user-songs/";
+    const idx = audioUrl.indexOf(marker);
+    if (idx !== -1) {
+      const path = audioUrl.substring(idx + marker.length);
+      console.log('🔍 Extracted path from public URL:', path);
+      
+      // Try to create a signed URL for better compatibility
+      try {
+        const { data, error } = await supabase.storage.from("user-songs").createSignedUrl(path, 60 * 60);
+        if (data?.signedUrl && !error) {
+          console.log('✅ Created signed URL from public URL:', data.signedUrl);
+          return data.signedUrl;
+        }
+      } catch (err) {
+        console.warn('⚠️ Could not create signed URL, using public URL:', err);
+      }
+    }
+    
+    // Fallback to decoded public URL
+    const decodedUrl = decodeURIComponent(audioUrl);
+    console.log('✅ Using direct public URL (decoded):', decodedUrl);
+    return decodedUrl;
   }
   
   // For private bucket files, create signed URL using stored path
@@ -64,6 +94,8 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
     return typeof val === 'string' ? val : undefined;
   })();
   
+  console.log('🔍 Storage path from metadata:', storagePath);
+  
   // For user uploaded tracks (both own and public tracks from others)
   if (track.user_uploaded) {
     let path = storagePath;
@@ -73,11 +105,13 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
       const idx = audioUrl.indexOf(marker);
       if (idx !== -1) {
         path = audioUrl.substring(idx + marker.length);
+        console.log('🔍 Extracted path from audioUrl:', path);
       }
     }
     
     // If no path found, try to construct one from the track ID
     if (!path && track.id) {
+      console.log('🔍 No path found, trying to construct from track ID...');
       // Try common file extensions for uploaded tracks
       const possibleExtensions = ['mp3', 'wav', 'flac', 'm4a', 'ogg'];
       
@@ -90,6 +124,8 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
           if (data?.signedUrl && !error) {
             console.log(`✅ Created signed URL with constructed path (${ext}):`, data.signedUrl);
             return data.signedUrl;
+          } else {
+            console.log(`❌ No file found for ${ext}:`, error);
           }
         } catch (err) {
           console.log(`❌ Failed to create signed URL for ${ext}:`, err);
@@ -103,7 +139,7 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
       try {
         const { data, error } = await supabase.storage.from("user-songs").createSignedUrl(path, 60 * 60);
         if (data?.signedUrl && !error) {
-          console.log('✅ Created signed URL for track:', track.id);
+          console.log('✅ Created signed URL for track:', track.id, data.signedUrl);
           return data.signedUrl;
         }
         // If signed URL creation fails, fall back to direct audio_url
@@ -603,11 +639,61 @@ function useProvideAudioPlayer(): PlayerAPI {
       console.log('✅ Resolved URL:', url);
 
       if (audioRef.current) {
+        console.log('🎵 Setting audio source to:', url);
         audioRef.current.src = url;
         setCurrentTrack(track);
         
         if (list) {
           setQueue(list);
+        }
+
+        // Add error event listener before loading
+        const onAudioError = (e: Event) => {
+          const audio = e.target as HTMLAudioElement;
+          console.error('🚨 Audio element error during load:', {
+            error: audio.error,
+            src: audio.src,
+            readyState: audio.readyState,
+            networkState: audio.networkState
+          });
+          if (audio.error) {
+            console.error('🚨 MediaError details:', {
+              code: audio.error.code,
+              message: audio.error.message
+            });
+          }
+        };
+        
+        audioRef.current.addEventListener('error', onAudioError);
+        
+        // Test if the URL is accessible
+        console.log('🔍 Testing URL accessibility...');
+        try {
+          const response = await fetch(url, { method: 'HEAD' });
+          console.log('🔍 URL test result:', {
+            status: response.status,
+            statusText: response.statusText,
+            contentType: response.headers.get('content-type'),
+            contentLength: response.headers.get('content-length')
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+        } catch (fetchError) {
+          console.error('🚨 URL is not accessible:', fetchError);
+          audioRef.current.removeEventListener('error', onAudioError);
+          throw new Error(`Audio file is not accessible: ${fetchError}`);
+        }
+
+        try {
+          console.log('🎵 Audio source set, attempting to load...');
+          await audioRef.current.load();
+          console.log('🎵 Audio loaded successfully');
+        } catch (loadError) {
+          console.error('🚨 Error loading audio:', loadError);
+          audioRef.current.removeEventListener('error', onAudioError);
+          throw loadError;
         }
 
         // Wait for metadata to be loaded before playing
@@ -628,7 +714,18 @@ function useProvideAudioPlayer(): PlayerAPI {
                 clearTimeout(timeoutId); // Clear timeout when metadata loads
                 resolve();
               };
+              
+              const onError = (e: Event) => {
+                console.error('🚨 Audio error event:', e);
+                audio.removeEventListener('loadedmetadata', onLoaded);
+                audio.removeEventListener('error', onError);
+                clearTimeout(timeoutId);
+                resolve(); // Continue anyway
+              };
+              
               audio.addEventListener('loadedmetadata', onLoaded);
+              audio.addEventListener('error', onError);
+              
               // Timeout fallback in case metadata doesn't load
               const timeoutId = setTimeout(() => {
                 console.log('⚠️ Metadata load timeout, using track duration fallback:', track.duration);
@@ -636,6 +733,7 @@ function useProvideAudioPlayer(): PlayerAPI {
                 console.log('⚠️ Setting fallback duration:', fallbackDuration);
                 setDuration(fallbackDuration);
                 audio.removeEventListener('loadedmetadata', onLoaded);
+                audio.removeEventListener('error', onError);
                 resolve();
               }, 1500); // Reduced from 3000ms to 1500ms
             }
@@ -647,12 +745,9 @@ function useProvideAudioPlayer(): PlayerAPI {
         // Restore saved position for this track if it exists
         try {
           if (user) {
-            const state = await getPlaybackState();
-            if (state?.track_id === track.id && state.position > 0) {
-              console.log('⏰ Restoring saved position from database:', state.position);
-              audioRef.current.currentTime = state.position;
-              setCurrentTime(state.position);
-            }
+            // Only try to restore position if playback_state table exists
+            // Skip for now to avoid errors in public tracks
+            console.log('⏰ Skipping position restore for now (table may not exist)');
           } else {
             // Fallback to localStorage if not logged in
             const CACHE_KEY = "player_state_v1";
@@ -670,10 +765,30 @@ function useProvideAudioPlayer(): PlayerAPI {
           console.log('⚠️ Could not restore saved position:', error);
         }
         
-        await audioRef.current.play();
-        setIsPlaying(true);
+        console.log('▶️ Attempting to play audio...');
+        console.log('🔍 Audio element state before play:', {
+          readyState: audioRef.current.readyState,
+          networkState: audioRef.current.networkState,
+          paused: audioRef.current.paused,
+          ended: audioRef.current.ended,
+          currentSrc: audioRef.current.currentSrc,
+          error: audioRef.current.error
+        });
         
-        console.log('✅ Started playing successfully');
+        try {
+          const playPromise = audioRef.current.play();
+          await playPromise;
+          setIsPlaying(true);
+          console.log('✅ Started playing successfully');
+        } catch (playError) {
+          console.error('🚨 Error during play():', playError);
+          console.error('🚨 Audio element state after error:', {
+            readyState: audioRef.current?.readyState,
+            networkState: audioRef.current?.networkState,
+            error: audioRef.current?.error
+          });
+          throw playError;
+        }
         
         // Double-check duration after play starts
         if (audioRef.current && (!duration || duration <= 0)) {
