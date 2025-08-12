@@ -34,8 +34,7 @@ export default function MyUploads() {
   const { currentTrack, isPlaying, play, setQueue } = useAudioPlayer();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   
-  // Upload strategy
-  const [useNextcloud, setUseNextcloud] = useState(false);
+  // Nextcloud status tracking
   const [nextcloudStatus, setNextcloudStatus] = useState<string>("");
   
   // Track metadata for upload
@@ -260,7 +259,7 @@ export default function MyUploads() {
         setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 85)));
 
         setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 60)));
-        const { data: inserted, error: trackError } = await supabase
+        const { data: inserted, error: trackError } = await (supabase as any)
           .from('tracks')
           .insert({
             title,
@@ -272,7 +271,11 @@ export default function MyUploads() {
             generated_by: user.id,
             user_uploaded: true,
             is_ai_generated: false,
-            metadata: { storage_path: audioFileName },
+            metadata: { 
+              storage_provider: 'nextcloud',
+              original_filename: file.name,
+              nextcloud_path: audioFileName
+            },
           })
           .select('id')
           .single();
@@ -341,7 +344,7 @@ export default function MyUploads() {
       if (fetchError) throw fetchError;
 
       // Delete from all playlists first
-      const { error: playlistError } = await supabase
+      const { error: playlistError } = await (supabase as any)
         .from('playlist_tracks')
         .delete()
         .eq('track_id', trackId);
@@ -457,26 +460,14 @@ export default function MyUploads() {
             />
           </div>
           
-          {/* Upload Strategy Selection */}
-          <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <h4 className="text-sm font-medium text-blue-900">Upload-Strategie</h4>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="nextcloud-upload"
-                checked={useNextcloud}
-                onCheckedChange={setUseNextcloud}
-              />
-              <Label htmlFor="nextcloud-upload" className="text-sm">
-                Nextcloud verwenden (kostenlos, reduziert Supabase-Egress)
-              </Label>
+          {/* Upload Status */}
+          <div className="space-y-3 p-4 bg-green-50 rounded-lg border border-green-200">
+            <h4 className="text-sm font-medium text-green-900">📡 Upload zu Nextcloud</h4>
+            <div className="text-xs text-green-700 bg-green-100 p-2 rounded">
+              <strong>Nextcloud Mode aktiv:</strong> Alle Dateien werden kostenfrei auf alpenview.ch gespeichert. Supabase Storage ist deaktiviert.
             </div>
-            {useNextcloud && (
-              <div className="text-xs text-blue-700 bg-blue-100 p-2 rounded">
-                <strong>Nextcloud Mode:</strong> Dateien werden auf alpenview.ch gespeichert und über öffentliche Links verfügbar gemacht. Dies reduziert die Supabase Storage-Kosten erheblich.
-              </div>
-            )}
             {nextcloudStatus && (
-              <div className="text-xs font-mono bg-gray-100 p-2 rounded">
+              <div className="text-xs font-mono bg-gray-100 p-2 rounded border">
                 {nextcloudStatus}
               </div>
             )}
