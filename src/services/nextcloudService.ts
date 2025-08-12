@@ -21,6 +21,13 @@ export class NextcloudService {
       
       onProgress?.(10);
       
+      // Check queue status before upload
+      const queueStatus = await this.getQueueStatus();
+      if (queueStatus.queueLength > 0) {
+        console.log(`⏳ Upload queued - ${queueStatus.queueLength} uploads ahead`);
+        onProgress?.(20);
+      }
+      
       const response = await fetch(`${this.apiUrl}/api/nextcloud/upload`, {
         method: 'POST',
         body: formData
@@ -66,6 +73,22 @@ export class NextcloudService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Connection failed'
+      };
+    }
+  }
+
+  // Get upload queue status
+  async getQueueStatus(): Promise<{ queueLength: number; activeUploads: number; maxConcurrent: number; isProcessing: boolean }> {
+    try {
+      const response = await fetch(`${this.apiUrl}/api/nextcloud/queue-status`);
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      return {
+        queueLength: 0,
+        activeUploads: 0,
+        maxConcurrent: 1,
+        isProcessing: false
       };
     }
   }
