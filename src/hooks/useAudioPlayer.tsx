@@ -4,6 +4,7 @@ import { supabase } from "../integrations/supabase/client";
 import { getPlaybackState, upsertPlaybackState, testPlaybackState } from "../services/playbackService";
 import { useAuth } from "../contexts/AuthContext";
 import type { Json, Tables } from "../integrations/supabase/types";
+import { buildAudioProxyUrl } from "../utils/apiUtils";
 
 export type BaseTrack = {
   id: string;
@@ -62,10 +63,11 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
   // If we have a direct URL and it's a public URL, try to use it directly
   if (audioUrl && audioUrl.includes('/object/public/')) {
     // Extract the path from the public URL to create a signed URL instead
-    // For Nextcloud URLs, return directly (no Supabase processing needed)
+    // For Nextcloud URLs, use proxy to avoid CORS issues
     if (audioUrl.includes('alpenview.ch') || audioUrl.includes('/download')) {
-      console.log('🔗 Nextcloud URL detected, using directly:', audioUrl);
-      return audioUrl;
+      console.log('🔗 Nextcloud URL detected, using proxy to avoid CORS');
+      const proxyUrl = buildAudioProxyUrl(audioUrl);
+      return proxyUrl;
     }
     
     const marker = "/user-songs/";
@@ -114,9 +116,10 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
       return null;
     }
     
-    // Return Nextcloud URL directly
-    console.log('📁 Using Nextcloud URL for track:', track.id, audioUrl);
-    return audioUrl;
+    // Return Nextcloud URL via proxy to avoid CORS
+    console.log('📁 Using Nextcloud URL via proxy for track:', track.id, audioUrl);
+    const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(audioUrl)}`;
+    return proxyUrl;
   }
 
   // Fall back to direct URL (should be Nextcloud)
@@ -635,24 +638,31 @@ function useProvideAudioPlayer(): PlayerAPI {
         
         audioRef.current.addEventListener('error', onAudioError);
         
-        // Test if the URL is accessible
-        console.log('🔍 Testing URL accessibility...');
-        try {
-          const response = await fetch(url, { method: 'HEAD' });
-          console.log('🔍 URL test result:', {
-            status: response.status,
-            statusText: response.statusText,
-            contentType: response.headers.get('content-type'),
-            contentLength: response.headers.get('content-length')
-          });
-          
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Skip URL accessibility test for proxy URLs (they're already validated)
+        const isProxyUrl = url.startsWith('/api/audio-proxy');
+        
+        if (!isProxyUrl) {
+          // Test if the URL is accessible (only for direct URLs)
+          console.log('🔍 Testing URL accessibility...');
+          try {
+            const response = await fetch(url, { method: 'HEAD' });
+            console.log('🔍 URL test result:', {
+              status: response.status,
+              statusText: response.statusText,
+              contentType: response.headers.get('content-type'),
+              contentLength: response.headers.get('content-length')
+            });
+            
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+          } catch (fetchError) {
+            console.error('🚨 URL is not accessible:', fetchError);
+            audioRef.current.removeEventListener('error', onAudioError);
+            throw new Error(`Audio file is not accessible: ${fetchError}`);
           }
-        } catch (fetchError) {
-          console.error('🚨 URL is not accessible:', fetchError);
-          audioRef.current.removeEventListener('error', onAudioError);
-          throw new Error(`Audio file is not accessible: ${fetchError}`);
+        } else {
+          console.log('⚡ Skipping URL test for proxy URL - using directly');
         }
 
         try {

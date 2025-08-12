@@ -333,29 +333,22 @@ export default function MyUploads() {
 
   const handleDeleteTrack = async (trackId: string) => {
     try {
-      // First, get the track data to find the storage path and filename
+      // First, get the track data - try all possible URL column names
       const { data: track, error: fetchError } = await supabase
         .from('tracks')
-        .select('metadata, file_url')
+        .select('*')
         .eq('id', trackId)
         .eq('generated_by', user?.id)
         .single();
 
       if (fetchError) throw fetchError;
 
-      // Extract filename from metadata or file_url for Nextcloud deletion
-      let filename = null;
-      if (track.metadata && typeof track.metadata === 'object') {
-        filename = (track.metadata as any).filename || (track.metadata as any).originalName;
-      }
+      console.log('🔍 Full track data for deletion:', track);
       
-      // If no filename in metadata, try to extract from file_url
-      if (!filename && track.file_url) {
-        const urlParts = track.file_url.split('/');
-        const lastPart = urlParts[urlParts.length - 1];
-        // Remove "/download" if present and get actual filename
-        filename = lastPart.replace('/download', '');
-      }
+      // Get the file URL (check both possible column names)
+      const fileUrl = (track as any).audio_url || track.file_url;
+      
+      console.log('🔍 Extracted file URL:', fileUrl);
 
       // Delete from all playlists first
       const { error: playlistError } = await (supabase as any)
@@ -384,15 +377,18 @@ export default function MyUploads() {
         // Don't throw here, continue with deletion
       }
 
-      // Delete file from Nextcloud if filename is available
-      if (filename) {
+      // Delete file from Nextcloud using the file URL
+      if (fileUrl) {
         try {
-          console.log('🗑️ Attempting to delete from Nextcloud:', filename);
-          const deleteResponse = await fetch(`/api/nextcloud/delete/${encodeURIComponent(filename)}`, {
-            method: 'DELETE',
+          console.log('🗑️ Attempting to delete from Nextcloud using URL:', fileUrl);
+          const deleteResponse = await fetch('/api/nextcloud/delete-by-url', {
+            method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
+            body: JSON.stringify({
+              fileUrl: fileUrl
+            })
           });
 
           if (deleteResponse.ok) {
@@ -407,7 +403,7 @@ export default function MyUploads() {
           // Don't throw error here - continue with database deletion even if Nextcloud deletion fails
         }
       } else {
-        console.warn('⚠️ No filename found for Nextcloud deletion');
+        console.warn('⚠️ No file URL found for Nextcloud deletion');
       }
 
       // Finally delete the track from the database
@@ -488,13 +484,13 @@ export default function MyUploads() {
           </div>
           
           {/* Upload Status */}
-          <div className="space-y-3 p-4 bg-green-50 rounded-lg border border-green-200">
-            <h4 className="text-sm font-medium text-green-900">📡 Upload zu Nextcloud</h4>
-            <div className="text-xs text-green-700 bg-green-100 p-2 rounded">
-              <strong>Nextcloud Mode aktiv:</strong> Alle Dateien werden kostenfrei auf alpenview.ch gespeichert. Supabase Storage ist deaktiviert.
+          <div className="space-y-3 p-4 bg-card rounded-lg border border-border">
+            <h4 className="text-sm font-medium text-foreground">📡 Upload zu Nextcloud</h4>
+            <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+              <strong>🇨🇭 Schweizer Hosting:</strong> Alle Daten werden in der Schweiz verarbeitet und gespeichert.
             </div>
             {nextcloudStatus && (
-              <div className="text-xs font-mono bg-gray-100 p-2 rounded border">
+              <div className="text-xs font-mono bg-muted p-2 rounded border border-border">
                 {nextcloudStatus}
               </div>
             )}
@@ -623,11 +619,25 @@ export default function MyUploads() {
             <Button
               variant="default"
               className="rounded-full"
-              onClick={() => {
-                // Shuffle mix: randomize order globally and start playing
+              onClick={(e) => {
+                // CRITICAL: Synchronous execution path for autoplay compliance
+                e.preventDefault();
+                
+                console.log('🎵 Shuffle Mix clicked - starting synchronous execution');
+                
                 const shuffled = [...userTracks].sort(() => Math.random() - 0.5);
-                setQueue(shuffled as any);
-                void play(shuffled[0] as any, shuffled as any);
+                const firstTrack = shuffled[0];
+                
+                if (!firstTrack) {
+                  console.log('⚠️ No tracks available for shuffle');
+                  return;
+                }
+                
+                console.log('⚡ Starting shuffle mix playback for:', firstTrack.title);
+                
+                // Use normal play function
+                void play(firstTrack as any, shuffled as any);
+                console.log('✅ Shuffle mix started');
               }}
             >
               Shuffle Mix

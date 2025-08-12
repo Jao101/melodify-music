@@ -106,18 +106,34 @@ export async function upsertPlaybackState(trackId: string, position: number) {
       throw error;
     }
   } catch (error) {
-    // Check if it's a network 404 error
-    if (error instanceof Error && (error.message?.includes('404') || error.message?.includes('Not Found'))) {
-      console.warn('🚨 playback_state endpoint not found - DB persistence disabled');
-      return; // Silently fail for missing endpoint
+    // Check if it's a network 404 error or fetch failure
+    if (error instanceof Error) {
+      const errorMessage = error.message?.toLowerCase() || '';
+      if (errorMessage.includes('404') || 
+          errorMessage.includes('not found') || 
+          errorMessage.includes('pgrst106') ||
+          errorMessage.includes('relation') ||
+          errorMessage.includes('does not exist')) {
+        console.warn('🚨 playback_state table does not exist - DB persistence disabled');
+        return; // Silently fail for missing table/endpoint
+      }
     }
     
-    console.error('Exception in upsertPlaybackState:', {
+    // Also check for fetch errors that indicate missing endpoint
+    if (error && typeof error === 'object' && 'error' in error) {
+      const innerError = (error as any).error;
+      if (innerError && (innerError.status === 404 || innerError.statusCode === 404)) {
+        console.warn('🚨 playback_state endpoint not found - DB persistence disabled');
+        return; // Silently fail for missing endpoint
+      }
+    }
+    
+    console.warn('⚠️ Failed to save playback state (non-critical):', {
       error,
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+      message: error instanceof Error ? error.message : 'Unknown error'
     });
-    // Don't throw for missing table - just log and continue
+    // Don't throw - just log and continue (playback state is not critical)
+    return;
   }
 }
 

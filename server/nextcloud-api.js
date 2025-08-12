@@ -250,6 +250,123 @@ app.delete('/api/nextcloud/delete/:filename', async (req, res) => {
   }
 });
 
+// Nextcloud Delete by URL Endpoint
+app.post('/api/nextcloud/delete-by-url', async (req, res) => {
+  try {
+    console.log('🗑️ Nextcloud delete-by-url request received');
+    
+    const { fileUrl } = req.body;
+    
+    if (!fileUrl) {
+      return res.status(400).json({ success: false, error: 'No fileUrl provided' });
+    }
+
+    const result = await performNextcloudDeleteByUrl(fileUrl);
+    
+    console.log('✅ Delete by URL completed:', fileUrl);
+    res.json(result);
+    
+  } catch (error) {
+    console.error('❌ Delete by URL error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Separate Funktion für das Löschen über URL
+async function performNextcloudDeleteByUrl(fileUrl) {
+  const auth = Buffer.from(`${nextcloudConfig.username}:${nextcloudConfig.password}`).toString('base64');
+  
+  console.log('🗑️ Deleting file from Nextcloud by URL:', fileUrl);
+  
+  // Extract share ID from URL (e.g., from https://alpenview.ch/s/Yb9wW4a2dZBetCM/download)
+  const shareIdMatch = fileUrl.match(/\/s\/([^\/]+)/);
+  if (!shareIdMatch) {
+    throw new Error('Could not extract share ID from URL');
+  }
+  
+  const shareId = shareIdMatch[1];
+  console.log('🔍 Extracted share ID:', shareId);
+  
+  // Get share information to find the file path
+  console.log('🔍 Getting share information...');
+  const shareInfoUrl = `${nextcloudConfig.baseUrl}/ocs/v2.php/apps/files_sharing/api/v1/shares/${shareId}`;
+  
+  const shareInfoResponse = await fetch(shareInfoUrl, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'OCS-APIRequest': 'true',
+      'Accept': 'application/json'
+    }
+  });
+  
+  if (!shareInfoResponse.ok) {
+    if (shareInfoResponse.status === 404) {
+      console.log('⚠️ Share not found (already deleted):', shareId);
+      return { 
+        success: true, 
+        message: 'Share not found (already deleted)',
+        shareId 
+      };
+    }
+    throw new Error(`Failed to get share info: ${shareInfoResponse.status} ${shareInfoResponse.statusText}`);
+  }
+  
+  const shareData = await shareInfoResponse.json();
+  const filePath = shareData.ocs?.data?.path;
+  
+  if (!filePath) {
+    throw new Error('Could not determine file path from share information');
+  }
+  
+  console.log('🔍 File path from share:', filePath);
+  
+  // Delete the actual file using WebDAV DELETE
+  const deleteUrl = `${nextcloudConfig.baseUrl}/remote.php/dav/files/${nextcloudConfig.username}${filePath}`;
+  console.log('🗑️ Sending WebDAV DELETE request to:', deleteUrl);
+  
+  const deleteResponse = await fetch(deleteUrl, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Basic ${auth}`
+    }
+  });
+  
+  // Check for rate limiting
+  if (deleteResponse.status === 429) {
+    throw new Error('Rate limited by Nextcloud - too many requests');
+  }
+  
+  // Successful deletion returns 204 (No Content) - file moved to trash
+  if (deleteResponse.status === 204) {
+    console.log('✅ File successfully moved to trash via WebDAV DELETE!');
+    return { 
+      success: true, 
+      message: 'File moved to trash successfully',
+      filePath,
+      shareId
+    };
+  }
+  
+  // Check if file already doesn't exist (404)
+  if (deleteResponse.status === 404) {
+    console.log('⚠️ File not found in Nextcloud (already deleted):', filePath);
+    return { 
+      success: true, 
+      message: 'File not found (already deleted)',
+      filePath,
+      shareId
+    };
+  }
+  
+  // Any other status is an error
+  const responseText = await deleteResponse.text();
+  throw new Error(`WebDAV DELETE failed: ${deleteResponse.status} ${deleteResponse.statusText} - ${responseText}`);
+}
+
 // Separate Funktion für das eigentliche Löschen
 async function performNextcloudDelete(filename) {
   const auth = Buffer.from(`${nextcloudConfig.username}:${nextcloudConfig.password}`).toString('base64');
@@ -331,6 +448,77 @@ app.get('/api/nextcloud/test', async (req, res) => {
   } catch (error) {
     res.json({ 
       success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Audio Proxy Endpoint um CORS-Probleme zu vermeiden
+app.get('/api/audio-proxy', async (req, res) => {
+  try {
+    const { url } = req.query;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'URL parameter is required' });
+    }
+
+    console.log('🎵 Audio proxy request for URL:', url);
+    
+    // Fetch the audio file from Nextcloud
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Melodify/1.0'
+      }
+    });
+
+    if (!response.ok) {
+      console.error('❌ Failed to fetch audio:', response.status, response.statusText);
+      return res.status(response.status).json({ 
+        error: `Failed to fetch audio: ${response.statusText}` 
+      });
+    }
+
+    // Set appropriate headers
+    res.set({
+      'Content-Type': response.headers.get('content-type') || 'audio/mpeg',
+      'Content-Length': response.headers.get('content-length'),
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=3600'
+    });
+
+    // Handle range requests for audio seeking
+    if (req.headers.range) {
+      const range = req.headers.range;
+      res.set('Content-Range', response.headers.get('content-range'));
+      res.status(206);
+    }
+
+    // Stream the audio data
+    const reader = response.body?.getReader();
+    if (reader) {
+      const pump = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            res.write(value);
+          }
+          res.end();
+        } catch (error) {
+          console.error('❌ Error streaming audio:', error);
+          res.end();
+        }
+      };
+      await pump();
+    } else {
+      // Fallback for environments without streaming support
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    }
+
+  } catch (error) {
+    console.error('❌ Audio proxy error:', error);
+    res.status(500).json({ 
       error: error.message 
     });
   }
