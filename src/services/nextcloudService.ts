@@ -2,9 +2,9 @@ export class NextcloudService {
   private apiUrl: string;
   
   constructor() {
-    // Use backend API to bypass CORS
-    this.apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-    console.log('🔧 NextcloudService initialized - Backend API mode');
+    // Use relative path in production, backend API URL in development
+    this.apiUrl = import.meta.env.PROD ? '' : (import.meta.env.VITE_API_URL || '');
+    console.log('🔧 NextcloudService initialized - API URL:', this.apiUrl || 'relative');
   }
   
   async uploadAndShare(
@@ -13,7 +13,7 @@ export class NextcloudService {
     onProgress?: (progress: number) => void
   ): Promise<{ success: boolean; downloadUrl?: string; error?: string }> {
     try {
-      console.log('📤 Starting Nextcloud upload via backend API:', filename);
+      console.log('📤 Starting Nextcloud upload via API:', filename);
       
       const formData = new FormData();
       formData.append('file', file);
@@ -21,7 +21,7 @@ export class NextcloudService {
       
       onProgress?.(10);
       
-      const response = await fetch(`${this.apiUrl}/api/nextcloud-upload`, {
+      const response = await fetch(`${this.apiUrl}/api/nextcloud/upload`, {
         method: 'POST',
         body: formData
       });
@@ -48,6 +48,24 @@ export class NextcloudService {
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
+      };
+    }
+  }
+
+  // Test connection to API
+  async testConnection(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const response = await fetch(`${this.apiUrl}/api/nextcloud/test`);
+      const result = await response.json();
+      
+      return {
+        success: result.success,
+        error: result.error
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Connection failed'
       };
     }
   }
