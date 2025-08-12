@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, createContext, useContext } from "react";
 import type { ReactNode } from "react";
 import { supabase } from "../integrations/supabase/client";
-import { getPlaybackState, upsertPlaybackState, testPlaybackState } from "../services/playbackService";
+import { getPlaybackState, upsertPlaybackState, testPlaybackState } from "../services/playbackServiceLocal";
 import { useAuth } from "../contexts/AuthContext";
 import type { Json, Tables } from "../integrations/supabase/types";
 import { buildAudioProxyUrl } from "../utils/apiUtils";
@@ -63,7 +63,7 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
   // If we have a direct URL and it's a public URL, try to use it directly
   if (audioUrl && audioUrl.includes('/object/public/')) {
     // Extract the path from the public URL to create a signed URL instead
-    // For Nextcloud URLs, use proxy to avoid CORS issues
+    // For Nextcloud URLs, always use proxy to avoid CORS issues
     if (audioUrl.includes('alpenview.ch') || audioUrl.includes('/download')) {
       console.log('🔗 Nextcloud URL detected, using proxy to avoid CORS');
       const proxyUrl = buildAudioProxyUrl(audioUrl);
@@ -118,7 +118,7 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
     
     // Return Nextcloud URL via proxy to avoid CORS
     console.log('📁 Using Nextcloud URL via proxy for track:', track.id, audioUrl);
-    const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(audioUrl)}`;
+    const proxyUrl = buildAudioProxyUrl(audioUrl);
     return proxyUrl;
   }
 
@@ -213,7 +213,7 @@ function useProvideAudioPlayer(): PlayerAPI {
     saveLocalQueue(q);
     // Immediately sync to DB when queue changes
     if (user) {
-      import("../services/playbackService").then(({ setPlaybackQueue }) => {
+      import("../services/playbackServiceLocal").then(({ setPlaybackQueue }) => {
         void setPlaybackQueue(q.map(t => t.id)).catch(() => {});
       }).catch(() => {});
     }
@@ -480,7 +480,7 @@ function useProvideAudioPlayer(): PlayerAPI {
             console.error('❌ Playback state table is not accessible, skipping DB sync');
           }
           
-          const state = await getPlaybackState();
+          const state = await getPlaybackState("dummy");
           console.log('💾 Playback state from DB:', state);
           
           if (state?.track_id) {

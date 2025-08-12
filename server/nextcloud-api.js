@@ -478,12 +478,15 @@ app.get('/api/audio-proxy', async (req, res) => {
       });
     }
 
-    // Set appropriate headers
+    // Set appropriate headers for CORS and audio streaming
     res.set({
       'Content-Type': response.headers.get('content-type') || 'audio/mpeg',
       'Content-Length': response.headers.get('content-length'),
       'Accept-Ranges': 'bytes',
-      'Cache-Control': 'public, max-age=3600'
+      'Cache-Control': 'public, max-age=3600',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': 'Range'
     });
 
     // Handle range requests for audio seeking

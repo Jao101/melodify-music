@@ -2,12 +2,16 @@
 
 /**
  * Get the correct API base URL for the current environment
- * In production, API and frontend are served from the same origin
- * In development, API is proxied by Vite
+ * In production on Render, use the full Render URL
+ * In development, use relative URLs (Vite proxy)
  */
 export function getApiBaseUrl(): string {
-  // In production build, use relative URLs (same origin)
-  // In development, Vite handles the proxy
+  // Check if we're running on Render in production
+  if (import.meta.env.PROD && window.location.hostname.includes('onrender.com')) {
+    return window.location.origin;
+  }
+  
+  // In development or other production environments, use relative URLs
   return '';
 }
 
