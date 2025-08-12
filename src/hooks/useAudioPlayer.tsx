@@ -62,22 +62,21 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
   // If we have a direct URL and it's a public URL, try to use it directly
   if (audioUrl && audioUrl.includes('/object/public/')) {
     // Extract the path from the public URL to create a signed URL instead
+    // For Nextcloud URLs, return directly (no Supabase processing needed)
+    if (audioUrl.includes('alpenview.ch') || audioUrl.includes('/download')) {
+      console.log('🔗 Nextcloud URL detected, using directly:', audioUrl);
+      return audioUrl;
+    }
+    
     const marker = "/user-songs/";
     const idx = audioUrl.indexOf(marker);
     if (idx !== -1) {
       const path = audioUrl.substring(idx + marker.length);
       console.log('🔍 Extracted path from public URL:', path);
       
-      // Try to create a signed URL for better compatibility
-      try {
-        const { data, error } = await supabase.storage.from("user-songs").createSignedUrl(path, 60 * 60);
-        if (data?.signedUrl && !error) {
-          console.log('✅ Created signed URL from public URL:', data.signedUrl);
-          return data.signedUrl;
-        }
-      } catch (err) {
-        console.warn('⚠️ Could not create signed URL, using public URL:', err);
-      }
+      // Legacy Supabase URLs - return as-is (no signed URL creation)
+      console.log('⚠️ Legacy Supabase URL detected, using public URL directly');
+      return audioUrl;
     }
     
     // Fallback to decoded public URL
@@ -109,48 +108,18 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
       }
     }
     
-    // If no path found, try to construct one from the track ID
-    if (!path && track.id) {
-      console.log('🔍 No path found, trying to construct from track ID...');
-      // Try common file extensions for uploaded tracks
-      const possibleExtensions = ['mp3', 'wav', 'flac', 'm4a', 'ogg'];
-      
-      for (const ext of possibleExtensions) {
-        const constructedPath = `${(track as any).user_id || (track as any).generated_by}/${track.id}.${ext}`;
-        console.log(`🔍 Trying constructed path: ${constructedPath}`);
-        
-        try {
-          const { data, error } = await supabase.storage.from("user-songs").createSignedUrl(constructedPath, 60 * 60);
-          if (data?.signedUrl && !error) {
-            console.log(`✅ Created signed URL with constructed path (${ext}):`, data.signedUrl);
-            return data.signedUrl;
-          } else {
-            console.log(`❌ No file found for ${ext}:`, error);
-          }
-        } catch (err) {
-          console.log(`❌ Failed to create signed URL for ${ext}:`, err);
-          continue;
-        }
-      }
+    // Nextcloud migration: Only process tracks with Nextcloud URLs
+    if (!audioUrl || (!audioUrl.includes('alpenview.ch') && !audioUrl.includes('/download'))) {
+      console.log('⚠️ Legacy track without Nextcloud URL, skipping');
+      return null;
     }
     
-    if (path) {
-      // Try to create signed URL - this will work for own tracks and public tracks (with new storage policy)
-      try {
-        const { data, error } = await supabase.storage.from("user-songs").createSignedUrl(path, 60 * 60);
-        if (data?.signedUrl && !error) {
-          console.log('✅ Created signed URL for track:', track.id, data.signedUrl);
-          return data.signedUrl;
-        }
-        // If signed URL creation fails, fall back to direct audio_url
-        console.warn('⚠️ Failed to create signed URL for track:', track.id, error);
-      } catch (err) {
-        console.warn('🚨 Error creating signed URL for track:', track.id, err);
-      }
-    }
+    // Return Nextcloud URL directly
+    console.log('📁 Using Nextcloud URL for track:', track.id, audioUrl);
+    return audioUrl;
   }
-  
-  // Fall back to direct URL
+
+  // Fall back to direct URL (should be Nextcloud)
   console.log('📁 Using fallback URL for track:', track.id, audioUrl);
   return audioUrl ?? null;
 }

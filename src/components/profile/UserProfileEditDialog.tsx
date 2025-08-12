@@ -70,19 +70,14 @@ export function UserProfileEditDialog({ open, onOpenChange, profile }: UserProfi
       
       setUploading(true);
       
-      // Upload image to Supabase Storage
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, { upsert: true });
+      // Avatar upload disabled - Nextcloud migration
+      // For now, we'll use a placeholder or disable avatar uploads
+      console.log('⚠️ Avatar upload disabled during Nextcloud migration');
+      throw new Error('Avatar upload is temporarily disabled');
       
-      if (uploadError) throw uploadError;
-      
-      // Get the public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-      
-      setAvatarUrl(publicUrl);
+      // Placeholder for future Nextcloud avatar integration
+      // const avatarUrl = await nextcloudService.uploadAvatar(file, filePath);
+      // setAvatarUrl(avatarUrl);
       
       // Mark form as changed
       setFormChanged(true);

@@ -370,18 +370,8 @@ export default function MyUploads() {
         // Don't throw here, continue with deletion
       }
 
-      // Delete the audio file from storage if it exists
-      if (track?.metadata && (track.metadata as any).storage_path) {
-        const storagePath = (track.metadata as any).storage_path;
-        const { error: storageError } = await supabase.storage
-          .from('user-songs')
-          .remove([storagePath]);
-
-        if (storageError) {
-          console.warn('Failed to delete audio file from storage:', storageError);
-          // Don't throw here, continue with database deletion
-        }
-      }
+      // Storage deletion removed - using Nextcloud only
+      // Nextcloud files remain accessible via public links
 
       // Finally delete the track from the database
       const { error } = await supabase
