@@ -4,7 +4,6 @@ import { supabase } from "../integrations/supabase/client";
 import { getPlaybackState, upsertPlaybackState, testPlaybackState } from "../services/playbackServiceLocal";
 import { useAuth } from "../contexts/AuthContext";
 import type { Json, Tables } from "../integrations/supabase/types";
-import { buildAudioProxyUrl } from "../utils/apiUtils";
 
 export type BaseTrack = {
   id: string;
@@ -63,11 +62,10 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
   // If we have a direct URL and it's a public URL, try to use it directly
   if (audioUrl && audioUrl.includes('/object/public/')) {
     // Extract the path from the public URL to create a signed URL instead
-    // For Nextcloud URLs, always use proxy to avoid CORS issues
+    // For Nextcloud URLs, use them directly since they are public downloads
     if (audioUrl.includes('alpenview.ch') || audioUrl.includes('/download')) {
-      console.log('🔗 Nextcloud URL detected, using proxy to avoid CORS');
-      const proxyUrl = buildAudioProxyUrl(audioUrl);
-      return proxyUrl;
+      console.log('🔗 Nextcloud URL detected, using direct access');
+      return audioUrl;
     }
     
     const marker = "/user-songs/";
@@ -116,10 +114,9 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
       return null;
     }
     
-    // Return Nextcloud URL via proxy to avoid CORS
-    console.log('📁 Using Nextcloud URL via proxy for track:', track.id, audioUrl);
-    const proxyUrl = buildAudioProxyUrl(audioUrl);
-    return proxyUrl;
+    // Return Nextcloud URL directly
+    console.log('📁 Using direct Nextcloud URL for track:', track.id, audioUrl);
+    return audioUrl;
   }
 
   // Fall back to direct URL (should be Nextcloud)
