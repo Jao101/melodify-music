@@ -229,52 +229,35 @@ export default function MyUploads() {
       }
 
       try {
-        const audioFileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${file.name}`;
+        const audioFileName = `${user.id}_${Date.now()}_${Math.random().toString(36).slice(2)}_${file.name}`;
         let audioUrl = '';
         
-        // Upload strategy: Nextcloud or Supabase
-        if (useNextcloud) {
-          setNextcloudStatus(`Uploading ${file.name} to Nextcloud...`);
-          try {
-            const nextcloud = new NextcloudService();
-            const result = await nextcloud.uploadAndShare(
-              file, 
-              audioFileName.replace(/\//g, '_'), // Replace slashes for Nextcloud filename
-              (progress) => {
-                setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + (progress * 0.8) / total)));
-              }
-            );
-            
-            if (!result.success) {
-              throw new Error(`Nextcloud upload failed: ${result.error}`);
+        // Upload ONLY to Nextcloud (Supabase Storage disabled)
+        setNextcloudStatus(`📤 Uploading ${file.name} to Nextcloud...`);
+        
+        try {
+          const nextcloud = new NextcloudService();
+          const result = await nextcloud.uploadAndShare(
+            file, 
+            audioFileName.replace(/[\/\\:*?"<>|]/g, '_'), // Clean filename for Nextcloud
+            (progress) => {
+              setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + (progress * 0.8) / total)));
             }
-            
-            audioUrl = result.downloadUrl!;
-            setNextcloudStatus(`✅ Uploaded to Nextcloud: ${file.name}`);
-          } catch (nextcloudError) {
-            setNextcloudStatus(`❌ Nextcloud failed: ${nextcloudError}`);
-            // Fallback to Supabase
-            setNextcloudStatus(`📦 Falling back to Supabase for ${file.name}...`);
-            setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 5)));
-            const { error: audioError } = await supabase.storage.from('user-songs').upload(audioFileName, file);
-            if (audioError) throw audioError;
-            
-            setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 30)));
-            const { data: { publicUrl } } = supabase.storage.from('user-songs').getPublicUrl(audioFileName);
-            audioUrl = publicUrl;
+          );
+          
+          if (!result.success) {
+            throw new Error(`Nextcloud upload failed: ${result.error}`);
           }
-        } else {
-          // Standard Supabase upload
-          setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 5)));
-          const { error: audioError } = await supabase.storage.from('user-songs').upload(audioFileName, file);
-          if (audioError) throw audioError;
-
-          setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 30)));
-          const { data: { publicUrl } } = supabase.storage.from('user-songs').getPublicUrl(audioFileName);
-          audioUrl = publicUrl;
+          
+          audioUrl = result.downloadUrl!;
+          setNextcloudStatus(`✅ Successfully uploaded to Nextcloud: ${file.name}`);
+          
+        } catch (nextcloudError) {
+          setNextcloudStatus(`❌ Nextcloud upload failed: ${nextcloudError}`);
+          throw new Error(`File upload failed: ${nextcloudError}`);
         }
 
-        setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 60)));
+        setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 85)));
 
         setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + 60)));
         const { data: inserted, error: trackError } = await supabase
