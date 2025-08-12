@@ -333,15 +333,29 @@ export default function MyUploads() {
 
   const handleDeleteTrack = async (trackId: string) => {
     try {
-      // First, get the track data to find the storage path
+      // First, get the track data to find the storage path and filename
       const { data: track, error: fetchError } = await supabase
         .from('tracks')
-        .select('metadata')
+        .select('metadata, file_url')
         .eq('id', trackId)
         .eq('generated_by', user?.id)
         .single();
 
       if (fetchError) throw fetchError;
+
+      // Extract filename from metadata or file_url for Nextcloud deletion
+      let filename = null;
+      if (track.metadata && typeof track.metadata === 'object') {
+        filename = (track.metadata as any).filename || (track.metadata as any).originalName;
+      }
+      
+      // If no filename in metadata, try to extract from file_url
+      if (!filename && track.file_url) {
+        const urlParts = track.file_url.split('/');
+        const lastPart = urlParts[urlParts.length - 1];
+        // Remove "/download" if present and get actual filename
+        filename = lastPart.replace('/download', '');
+      }
 
       // Delete from all playlists first
       const { error: playlistError } = await (supabase as any)
@@ -370,8 +384,31 @@ export default function MyUploads() {
         // Don't throw here, continue with deletion
       }
 
-      // Storage deletion removed - using Nextcloud only
-      // Nextcloud files remain accessible via public links
+      // Delete file from Nextcloud if filename is available
+      if (filename) {
+        try {
+          console.log('🗑️ Attempting to delete from Nextcloud:', filename);
+          const deleteResponse = await fetch(`/api/nextcloud/delete/${encodeURIComponent(filename)}`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (deleteResponse.ok) {
+            const deleteResult = await deleteResponse.json();
+            console.log('✅ Nextcloud deletion result:', deleteResult);
+          } else {
+            console.warn('⚠️ Nextcloud deletion failed:', deleteResponse.status, deleteResponse.statusText);
+            // Don't throw error here - continue with database deletion even if Nextcloud deletion fails
+          }
+        } catch (nextcloudError) {
+          console.warn('⚠️ Nextcloud deletion error:', nextcloudError);
+          // Don't throw error here - continue with database deletion even if Nextcloud deletion fails
+        }
+      } else {
+        console.warn('⚠️ No filename found for Nextcloud deletion');
+      }
 
       // Finally delete the track from the database
       const { error } = await supabase

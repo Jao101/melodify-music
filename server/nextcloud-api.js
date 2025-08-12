@@ -225,6 +225,75 @@ async function performNextcloudUpload(file, filename) {
   };
 }
 
+// Nextcloud Delete Endpoint
+app.delete('/api/nextcloud/delete/:filename', async (req, res) => {
+  try {
+    console.log('🗑️ Nextcloud delete request received');
+    
+    const { filename } = req.params;
+    
+    if (!filename) {
+      return res.status(400).json({ success: false, error: 'No filename provided' });
+    }
+
+    const result = await performNextcloudDelete(filename);
+    
+    console.log('✅ Delete completed:', filename);
+    res.json(result);
+    
+  } catch (error) {
+    console.error('❌ Delete error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Separate Funktion für das eigentliche Löschen
+async function performNextcloudDelete(filename) {
+  const auth = Buffer.from(`${nextcloudConfig.username}:${nextcloudConfig.password}`).toString('base64');
+  
+  console.log('🗑️ Deleting file from Nextcloud:', filename);
+  
+  // WebDAV DELETE-Anfrage an die Datei
+  const deleteUrl = `${nextcloudConfig.baseUrl}/remote.php/dav/files/${nextcloudConfig.username}/audio/${filename}`;
+  const deleteResponse = await fetch(deleteUrl, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Basic ${auth}`
+    }
+  });
+  
+  // Check for rate limiting
+  if (deleteResponse.status === 429) {
+    throw new Error('Rate limited by Nextcloud - too many requests');
+  }
+  
+  // Erfolgreiche Löschung wird mit 204 (No Content) bestätigt
+  if (deleteResponse.status !== 204) {
+    // Prüfen ob die Datei bereits nicht existiert (404)
+    if (deleteResponse.status === 404) {
+      console.log('⚠️ File not found in Nextcloud (already deleted):', filename);
+      return { 
+        success: true, 
+        message: 'File not found (already deleted)',
+        filename 
+      };
+    }
+    
+    throw new Error(`Delete failed: ${deleteResponse.status} ${deleteResponse.statusText}`);
+  }
+  
+  console.log('✅ File successfully deleted from Nextcloud!');
+  
+  return { 
+    success: true, 
+    message: 'File deleted successfully',
+    filename 
+  };
+}
+
 // Queue Status endpoint
 app.get('/api/nextcloud/queue-status', (req, res) => {
   res.json({
@@ -268,3 +337,13 @@ app.get('/api/nextcloud/test', async (req, res) => {
 });
 
 export default app;
+
+// Start server if this file is run directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => {
+    console.log(`🚀 Nextcloud API Server running on port ${PORT}`);
+    console.log(`📁 Nextcloud URL: ${nextcloudConfig.baseUrl}`);
+    console.log(`👤 Username: ${nextcloudConfig.username}`);
+  });
+}
