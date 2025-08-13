@@ -73,6 +73,69 @@ export default function MyUploads() {
     fetchUserTracks();
   }, [fetchUserTracks]);
 
+  // Reconcile Nextcloud files on reload: add any files not yet in DB
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const resp = await fetch(`/api/nextcloud/list?userId=${encodeURIComponent(user.id)}`);
+        if (!resp.ok) return; // silently ignore
+        const data = await resp.json();
+        if (!data?.success || !Array.isArray(data.files)) return;
+
+        // Build a set of known filenames from current list
+        const known = new Set((userTracks || []).map(t => (t as any)?.metadata?.nextcloud_path));
+
+        const missing = data.files.filter((f: any) => {
+          const path = (f?.path as string) || '';
+          // our metadata stores nextcloud_path as userId/filename
+          const pathKey = path.replace(/^\/audio\//, '');
+          return pathKey && !known.has(pathKey);
+        });
+
+        if (missing.length === 0) return;
+
+        // Insert minimal track rows for missing files
+        for (const f of missing) {
+          try {
+            const filename = (f.filename as string) || 'Unknown';
+            const title = filename.replace(/\.[^.]+$/, '');
+            const artist = user.email || 'Unknown Artist';
+            const downloadUrl = f.downloadUrl as string | undefined;
+
+            if (!downloadUrl) continue; // can't play without public link
+
+            await supabase
+              .from('tracks')
+              .insert({
+                title,
+                artist,
+                album: null,
+                genre: null,
+                duration: 0,
+                audio_url: downloadUrl,
+                generated_by: user.id,
+                user_uploaded: true,
+                is_ai_generated: false,
+                metadata: {
+                  storage_provider: 'nextcloud',
+                  original_filename: filename,
+                  nextcloud_path: `${user.id}/${filename}`
+                },
+              });
+          } catch (e) {
+            // continue with next
+          }
+        }
+
+        // Refresh list
+        await fetchUserTracks();
+      } catch (e) {
+        // ignore reconciliation errors
+      }
+    })();
+  }, [user, fetchUserTracks]);
+
   // Toggle track public status
   const toggleTrackPublic = async (track: Track, isPublic: boolean) => {
     if (!user || ((track as any).user_id !== user.id && (track as any).generated_by !== user.id)) {

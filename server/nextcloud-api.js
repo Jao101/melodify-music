@@ -501,6 +501,122 @@ app.get('/api/nextcloud/test', async (req, res) => {
   }
 });
 
+// List files in a user's audio folder and return public download links
+app.get('/api/nextcloud/list', async (req, res) => {
+  try {
+    const userId = req.query.userId;
+    if (!userId || typeof userId !== 'string') {
+      return res.status(400).json({ success: false, error: 'userId is required' });
+    }
+
+    const auth = Buffer.from(`${nextcloudConfig.username}:${nextcloudConfig.password}`).toString('base64');
+    const basePath = `/audio/${userId}/`;
+    const propfindUrl = `${nextcloudConfig.baseUrl}/remote.php/dav/files/${nextcloudConfig.username}${basePath}`;
+
+    // Ensure directory exists (ignore errors)
+    await fetch(propfindUrl, { method: 'MKCOL', headers: { 'Authorization': `Basic ${auth}` } });
+
+    // WebDAV PROPFIND to list files
+    const propfindRes = await fetch(propfindUrl, {
+      method: 'PROPFIND',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Depth': '1'
+      }
+    });
+
+    if (!propfindRes.ok) {
+      return res.status(propfindRes.status).json({ success: false, error: `PROPFIND failed: ${propfindRes.statusText}` });
+    }
+
+    const xml = await propfindRes.text();
+
+    // Naive XML parsing: split responses, pick items with contenttype starting with audio/
+    const responses = xml.split('<d:response').slice(1).map(chunk => '<d:response' + chunk);
+    const files = [];
+    for (const r of responses) {
+      const hrefMatch = r.match(/<d:href>(.*?)<\/d:href>/);
+      const typeMatch = r.match(/<d:getcontenttype>(.*?)<\/d:getcontenttype>/);
+      const lengthMatch = r.match(/<d:getcontentlength>(.*?)<\/d:getcontentlength>/);
+      if (!hrefMatch) continue;
+      const href = hrefMatch[1];
+      const isDir = /\/$/.test(href) && !typeMatch;
+      if (isDir) continue;
+      const contentType = typeMatch ? typeMatch[1] : '';
+      if (contentType && !contentType.startsWith('audio/')) continue;
+
+      // Convert WebDAV href to path under files root
+      const decodedHref = decodeURIComponent(href);
+      const idx = decodedHref.indexOf(`/remote.php/dav/files/${nextcloudConfig.username}`);
+      let path = decodedHref;
+      if (idx !== -1) {
+        path = decodedHref.substring(idx + (`/remote.php/dav/files/${nextcloudConfig.username}`).length);
+      }
+      // We only care about items inside basePath
+      if (!path.startsWith(basePath)) continue;
+      const filename = path.split('/').filter(Boolean).pop();
+      const size = lengthMatch ? Number(lengthMatch[1]) : undefined;
+      files.push({ path, filename, size, contentType: contentType || 'audio/mpeg' });
+    }
+
+    // Get existing shares for this folder (and subfiles)
+    const sharesUrl = `${nextcloudConfig.baseUrl}/ocs/v2.php/apps/files_sharing/api/v1/shares?path=${encodeURIComponent(basePath)}&subfiles=true`;
+    const sharesRes = await fetch(sharesUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'OCS-APIRequest': 'true',
+        'Accept': 'application/json'
+      }
+    });
+
+    const sharesJson = sharesRes.ok ? await sharesRes.json() : { ocs: { data: [] } };
+    const shareMap = new Map();
+    const shareItems = sharesJson?.ocs?.data || [];
+    for (const s of shareItems) {
+      const spath = s?.path; // e.g. /audio/userId/file.mp3
+      const surl = s?.url;
+      if (spath && surl) {
+        shareMap.set(spath, surl + '/download');
+      }
+    }
+
+    // Ensure every file has a public share
+    const results = [];
+    for (const f of files) {
+      let downloadUrl = shareMap.get(f.path);
+      if (!downloadUrl) {
+        // Create a public share
+        const form = new URLSearchParams({
+          'shareType': '3',
+          'path': f.path,
+          'permissions': '1'
+        });
+        const shareCreateRes = await fetch(`${nextcloudConfig.baseUrl}/ocs/v2.php/apps/files_sharing/api/v1/shares`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'OCS-APIRequest': 'true'
+          },
+          body: form
+        });
+        if (shareCreateRes.ok) {
+          const text = await shareCreateRes.text();
+          const urlMatch = text.match(/<url><!\[CDATA\[(.*?)\]\]><\/url>/) || text.match(/<url>(.*?)<\/url>/);
+          if (urlMatch) downloadUrl = urlMatch[1] + '/download';
+        }
+      }
+      results.push({ ...f, downloadUrl });
+    }
+
+    res.json({ success: true, files: results });
+  } catch (error) {
+    console.error('❌ List error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Audio Proxy Endpoint um CORS-Probleme zu vermeiden
 app.get('/api/audio-proxy', async (req, res) => {
   try {
