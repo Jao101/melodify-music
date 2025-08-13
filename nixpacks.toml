@@ -1,8 +1,14 @@
+providers = ["node"]  # Force Node.js detection instead of Deno
+
+[variables]
+NIXPACKS_METADATA = "node"
+
 [phases.setup]
-nixPkgs = ["nodejs_20", "npm"]
+nixPkgs = ["nodejs_20"]  # Or your preferred version, e.g., "nodejs_22"
+aptPkgs = ["curl", "wget"]  # Keep these if needed
 
 [phases.build]
-cmds = ["npm install", "npm run build"]
+cmds = ["npm install", "npm run build"]  # Adjust if your build script differs
 
 [start]
 cmd = "npm start"
