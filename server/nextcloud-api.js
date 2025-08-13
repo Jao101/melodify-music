@@ -275,6 +275,32 @@ app.post('/api/nextcloud/delete-by-url', async (req, res) => {
   }
 });
 
+// Nextcloud Delete by URL via HTTP DELETE (preferred for REST semantics)
+app.delete('/api/nextcloud/delete-by-url', async (req, res) => {
+  try {
+    console.log('🗑️ Nextcloud delete-by-url (DELETE) request received');
+    
+    // Accept fileUrl via query string primarily; fallback to body for clients that send it
+    const fileUrl = req.query.fileUrl || req.body?.fileUrl;
+    
+    if (!fileUrl || typeof fileUrl !== 'string') {
+      return res.status(400).json({ success: false, error: 'No fileUrl provided' });
+    }
+
+    const result = await performNextcloudDeleteByUrl(fileUrl);
+    
+    console.log('✅ Delete by URL (DELETE) completed:', fileUrl);
+    res.json(result);
+    
+  } catch (error) {
+    console.error('❌ Delete by URL (DELETE) error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 // Separate Funktion für das Löschen über URL
 async function performNextcloudDeleteByUrl(fileUrl) {
   const auth = Buffer.from(`${nextcloudConfig.username}:${nextcloudConfig.password}`).toString('base64');

@@ -377,30 +377,46 @@ export default function MyUploads() {
         // Don't throw here, continue with deletion
       }
 
-      // Delete file from Nextcloud using the file URL
+      // Delete file from Nextcloud using WebDAV HTTP DELETE
       if (fileUrl) {
         try {
-          console.log('🗑️ Attempting to delete from Nextcloud using URL:', fileUrl);
-          const deleteResponse = await fetch('/api/nextcloud/delete-by-url', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              fileUrl: fileUrl
-            })
-          });
+          console.log('🗑️ Attempting WebDAV DELETE via API (by URL):', fileUrl);
+          const url = new URL(fileUrl);
+          const pathname = url.pathname || '';
+          // Try to extract filename used at upload (we stored metadata.nextcloud_path)
+          const nextcloudPath = (track as any)?.metadata?.nextcloud_path as string | undefined;
 
-          if (deleteResponse.ok) {
-            const deleteResult = await deleteResponse.json();
-            console.log('✅ Nextcloud deletion result:', deleteResult);
-          } else {
-            console.warn('⚠️ Nextcloud deletion failed:', deleteResponse.status, deleteResponse.statusText);
-            // Don't throw error here - continue with database deletion even if Nextcloud deletion fails
+          let deleteOk = false;
+
+          if (nextcloudPath) {
+            // Prefer direct filename endpoint if available
+            const resp = await fetch(`/api/nextcloud/delete/${encodeURIComponent(nextcloudPath)}`, {
+              method: 'DELETE'
+            });
+            if (resp.ok) {
+              const result = await resp.json();
+              console.log('✅ Nextcloud deletion by filename result:', result);
+              deleteOk = true;
+            } else {
+              console.warn('⚠️ Filename delete failed, falling back to delete-by-url:', resp.status, resp.statusText);
+            }
+          }
+
+          if (!deleteOk) {
+            const resp2 = await fetch(`/api/nextcloud/delete-by-url?${new URLSearchParams({ fileUrl })}`, {
+              method: 'DELETE'
+            });
+            if (resp2.ok) {
+              const result2 = await resp2.json();
+              console.log('✅ Nextcloud deletion by URL result:', result2);
+            } else {
+              console.warn('⚠️ Nextcloud deletion by URL failed:', resp2.status, resp2.statusText);
+              // Don't throw — continue with DB deletion anyway
+            }
           }
         } catch (nextcloudError) {
           console.warn('⚠️ Nextcloud deletion error:', nextcloudError);
-          // Don't throw error here - continue with database deletion even if Nextcloud deletion fails
+          // Continue with DB deletion even if Nextcloud deletion fails
         }
       } else {
         console.warn('⚠️ No file URL found for Nextcloud deletion');
