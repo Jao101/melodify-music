@@ -46,7 +46,7 @@ export function isPlayableTrack(t: BaseTrack | undefined | null): boolean {
   return isPlayable;
 }
 
-async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
+function resolvePlayableUrl(track: BaseTrack): string | null {
   // Get the audio URL - could be audio_url or file_url depending on the data source
   const audioUrl = track.audio_url || (track as any).file_url;
   
@@ -65,7 +65,7 @@ async function resolvePlayableUrl(track: BaseTrack): Promise<string | null> {
     // For Nextcloud URLs, use them directly since they are public downloads
     if (audioUrl.includes('alpenview.ch') || audioUrl.includes('/download')) {
       console.log('🔗 Nextcloud URL detected, using direct access');
-      return audioUrl;
+  return audioUrl;
     }
     
     const marker = "/user-songs/";
@@ -635,41 +635,20 @@ function useProvideAudioPlayer(): PlayerAPI {
         
         audioRef.current.addEventListener('error', onAudioError);
         
-        // Skip URL accessibility test for proxy URLs (they're already validated)
-        const isProxyUrl = url.startsWith('/api/audio-proxy');
-        
-        if (!isProxyUrl) {
-          // Test if the URL is accessible (only for direct URLs)
-          console.log('🔍 Testing URL accessibility...');
-          try {
-            const response = await fetch(url, { method: 'HEAD' });
-            console.log('🔍 URL test result:', {
-              status: response.status,
-              statusText: response.statusText,
-              contentType: response.headers.get('content-type'),
-              contentLength: response.headers.get('content-length')
-            });
-            
-            if (!response.ok) {
-              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-          } catch (fetchError) {
-            console.error('🚨 URL is not accessible:', fetchError);
-            audioRef.current.removeEventListener('error', onAudioError);
-            throw new Error(`Audio file is not accessible: ${fetchError}`);
-          }
-        } else {
-          console.log('⚡ Skipping URL test for proxy URL - using directly');
-        }
-
+        // IMPORTANT: Attempt immediate playback right after setting src to keep user gesture
+        // and avoid browser autoplay restrictions. We intentionally avoid any awaited network
+        // checks before the first play() call.
+        let playedImmediately = false;
         try {
-          console.log('🎵 Audio source set, attempting to load...');
-          await audioRef.current.load();
-          console.log('🎵 Audio loaded successfully');
-        } catch (loadError) {
-          console.error('🚨 Error loading audio:', loadError);
-          audioRef.current.removeEventListener('error', onAudioError);
-          throw loadError;
+          console.log('▶️ Trying immediate play() to preserve user gesture...');
+          const playPromise = audioRef.current.play();
+          await playPromise;
+          setIsPlaying(true);
+          playedImmediately = true;
+          console.log('✅ Immediate play succeeded');
+        } catch (immediateErr) {
+          // NotAllowedError or other issues can happen; we will try again after metadata
+          console.warn('⚠️ Immediate play failed (will retry after metadata):', immediateErr);
         }
 
         // Wait for metadata to be loaded before playing
@@ -717,7 +696,26 @@ function useProvideAudioPlayer(): PlayerAPI {
         };
 
         await waitForMetadata();
-        
+
+        // If immediate play failed earlier, try starting playback again now that we have metadata
+        if (!playedImmediately) {
+          try {
+            console.log('▶️ Retrying play() after metadata...');
+            const playPromise = audioRef.current.play();
+            await playPromise;
+            setIsPlaying(true);
+            console.log('✅ Play after metadata succeeded');
+          } catch (retryErr) {
+            console.error('🚨 Error during play() after metadata:', retryErr);
+            console.error('🚨 Audio element state after error:', {
+              readyState: audioRef.current?.readyState,
+              networkState: audioRef.current?.networkState,
+              error: audioRef.current?.error
+            });
+            throw retryErr;
+          }
+        }
+
         // Restore saved position for this track if it exists
         try {
           if (user) {
@@ -740,32 +738,7 @@ function useProvideAudioPlayer(): PlayerAPI {
         } catch (error) {
           console.log('⚠️ Could not restore saved position:', error);
         }
-        
-        console.log('▶️ Attempting to play audio...');
-        console.log('🔍 Audio element state before play:', {
-          readyState: audioRef.current.readyState,
-          networkState: audioRef.current.networkState,
-          paused: audioRef.current.paused,
-          ended: audioRef.current.ended,
-          currentSrc: audioRef.current.currentSrc,
-          error: audioRef.current.error
-        });
-        
-        try {
-          const playPromise = audioRef.current.play();
-          await playPromise;
-          setIsPlaying(true);
-          console.log('✅ Started playing successfully');
-        } catch (playError) {
-          console.error('🚨 Error during play():', playError);
-          console.error('🚨 Audio element state after error:', {
-            readyState: audioRef.current?.readyState,
-            networkState: audioRef.current?.networkState,
-            error: audioRef.current?.error
-          });
-          throw playError;
-        }
-        
+
         // Double-check duration after play starts
         if (audioRef.current && (!duration || duration <= 0)) {
           const audioDuration = Number.isFinite(audioRef.current.duration) ? audioRef.current.duration : 0;
