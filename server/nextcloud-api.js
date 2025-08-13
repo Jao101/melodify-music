@@ -2,6 +2,7 @@
 import express from 'express';
 import multer from 'multer';
 import cors from 'cors';
+import { createClient } from '@supabase/supabase-js';
 
 const app = express();
 const upload = multer();
@@ -16,6 +17,15 @@ const nextcloudConfig = {
   username: process.env.NEXTCLOUD_USERNAME || 'admin',
   password: process.env.NEXTCLOUD_PASSWORD || '9xHKC-WpYfd-4GwXB-HeXac-2p3as'
 };
+
+// Supabase client initialization
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error("Supabase URL or Key is not defined. Reconciliation will fail.");
+}
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 // Rate Limiting und Queue System
 class UploadQueue {
@@ -581,38 +591,116 @@ app.get('/api/nextcloud/list', async (req, res) => {
       }
     }
 
-    // Ensure every file has a public share
-    const results = [];
-    for (const f of files) {
-      let downloadUrl = shareMap.get(f.path);
-      if (!downloadUrl) {
-        // Create a public share
-        const form = new URLSearchParams({
-          'shareType': '3',
-          'path': f.path,
-          'permissions': '1'
-        });
-        const shareCreateRes = await fetch(`${nextcloudConfig.baseUrl}/ocs/v2.php/apps/files_sharing/api/v1/shares`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Basic ${auth}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'OCS-APIRequest': 'true'
-          },
-          body: form
-        });
-        if (shareCreateRes.ok) {
-          const text = await shareCreateRes.text();
-          const urlMatch = text.match(/<url><!\[CDATA\[(.*?)\]\]><\/url>/) || text.match(/<url>(.*?)<\/url>/);
-          if (urlMatch) downloadUrl = urlMatch[1] + '/download';
+    // Ensure every file has a public share - create missing ones in limited concurrency
+  const results = files.map(f => ({ ...f, downloadUrl: shareMap.get(f.path) }));
+  let missing = results.filter(r => !r.downloadUrl);
+  // Cap share creations per request to keep responses snappy
+  const maxCreate = 20;
+  if (missing.length > maxCreate) missing = missing.slice(0, maxCreate);
+    const batchSize = 4;
+    for (let i = 0; i < missing.length; i += batchSize) {
+      const batch = missing.slice(i, i + batchSize);
+      await Promise.all(batch.map(async (r) => {
+        // retry up to 3 times on 429
+        let attempts = 0;
+        while (attempts < 3 && !r.downloadUrl) {
+          attempts++;
+          const form = new URLSearchParams({ 'shareType': '3', 'path': r.path, 'permissions': '1' });
+          const res2 = await fetch(`${nextcloudConfig.baseUrl}/ocs/v2.php/apps/files_sharing/api/v1/shares`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Basic ${auth}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'OCS-APIRequest': 'true'
+            },
+            body: form
+          });
+          if (res2.status === 429) {
+            // exponential backoff: 1000, 2000 ms
+            await new Promise(rslv => setTimeout(rslv, 1000 * attempts));
+            continue;
+          }
+          if (res2.ok) {
+            const text = await res2.text();
+            const urlMatch = text.match(/<url><!\[CDATA\[(.*?)\]\]><\/url>/) || text.match(/<url>(.*?)<\/url>/);
+            if (urlMatch) {
+              r.downloadUrl = urlMatch[1] + '/download';
+            }
+          } else {
+            // stop on non-429 errors
+            break;
+          }
         }
-      }
-      results.push({ ...f, downloadUrl });
+      }));
     }
 
     res.json({ success: true, files: results });
   } catch (error) {
     console.error('❌ List error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Endpoint to reconcile files from Nextcloud into Supabase DB
+app.post('/api/nextcloud/reconcile', async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ success: false, error: 'Supabase client not initialized.' });
+  }
+
+  try {
+    const { userId, files } = req.body;
+    if (!userId || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ success: false, error: 'userId and files array are required.' });
+    }
+
+    console.log(`Reconciling ${files.length} files for user ${userId}`);
+
+    const newTracks = files.map(file => {
+      // Basic metadata extraction from filename (e.g., "Artist - Title.mp3")
+      let title = file.filename.replace(/\.[^/.]+$/, ""); // remove extension
+      let artist = 'Unknown Artist';
+      
+      const parts = title.split(' - ');
+      if (parts.length > 1) {
+        artist = parts[0].trim();
+        title = parts.slice(1).join(' - ').trim();
+      }
+
+      return {
+        user_id: userId,
+        title: title,
+        artist: artist,
+        album: 'Uploaded Tracks',
+        genre: 'Unknown',
+        file_path: file.downloadUrl,
+        user_uploaded: true,
+        public: false,
+        duration: 0, // Duration is unknown at this stage
+        metadata: {
+          source: 'nextcloud_reconcile',
+          nextcloud_path: file.path,
+          original_filename: file.filename,
+          size: file.size,
+          contentType: file.contentType,
+        }
+      };
+    });
+
+    const { data, error } = await supabase
+      .from('tracks')
+      .insert(newTracks)
+      .select();
+
+    if (error) {
+      console.error('Supabase insert error:', error);
+      throw new Error(`Supabase insert failed: ${error.message}`);
+    }
+
+    console.log(`Successfully reconciled and inserted ${data.length} new tracks.`);
+    res.json({ success: true, data });
+
+  } catch (error) {
+    console.error('❌ Reconcile error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

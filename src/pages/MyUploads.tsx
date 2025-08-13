@@ -77,92 +77,118 @@ export default function MyUploads() {
   useEffect(() => {
     if (!user || loading) return;
 
-    // Prevent multiple runs in one session
-    const ranKey = `reconciled_${user.id}`;
+    const ranKey = `reconciled_${user.id}_v2`;
     if (sessionStorage.getItem(ranKey) === '1') return;
 
-    (async () => {
+    const reconcile = async () => {
       try {
-        const resp = await fetch(`/api/nextcloud/list?userId=${encodeURIComponent(user.id)}`);
-        if (!resp.ok) return; // silently ignore
-        const data = await resp.json();
-        if (!data?.success || !Array.isArray(data.files)) return;
+        // Get fresh track list from database
+        const { data: freshTracks, error: fetchError } = await supabase
+          .from('tracks')
+          .select('*')
+          .or(`user_id.eq.${user.id},generated_by.eq.${user.id}`)
+          .eq('user_uploaded', true);
 
-        // Build known sets from current DB state
-        const knownPaths = new Set<string>();
-        const knownFilenames = new Set<string>();
-        for (const t of userTracks || []) {
-          const meta = (t as any)?.metadata || {};
-          if (typeof meta?.nextcloud_path === 'string') knownPaths.add(meta.nextcloud_path);
-          if (typeof meta?.original_filename === 'string') knownFilenames.add(meta.original_filename);
-        }
-
-        const toInsert: any[] = [];
-        for (const f of data.files as any[]) {
-          const path = (f?.path as string) || '';
-          const pathKey = path.replace(/^\/audio\//, ''); // userId/filename
-          const filename = (f?.filename as string) || '';
-
-          // Skip if already known by path or original filename
-          if (pathKey && knownPaths.has(pathKey)) continue;
-          if (filename && knownFilenames.has(filename)) continue;
-
-          // Require a download URL to be playable
-          const downloadUrl = f?.downloadUrl as string | undefined;
-          if (!downloadUrl) continue;
-
-          const title = (filename || 'Unknown').replace(/\.[^.]+$/, '');
-          const artist = user.email || 'Unknown Artist';
-
-          toInsert.push({
-            title,
-            artist,
-            album: null,
-            genre: null,
-            duration: 0,
-            audio_url: downloadUrl,
-            generated_by: user.id,
-            user_uploaded: true,
-            is_ai_generated: false,
-            metadata: {
-              storage_provider: 'nextcloud',
-              original_filename: filename,
-              nextcloud_path: pathKey
-            },
-          });
-        }
-
-        if (toInsert.length === 0) {
-          sessionStorage.setItem(ranKey, '1');
+        if (fetchError) {
+          console.error('Error fetching fresh tracks:', fetchError);
           return;
         }
 
-        // Insert missing tracks sequentially to be gentle on rate limits
-        for (const row of toInsert) {
-          try {
-            // Double-check in DB to avoid duplicates if race
-            const { data: existing } = await supabase
-              .from('tracks')
-              .select('id, metadata')
-              .eq('generated_by', user.id)
-              .or(`metadata->>nextcloud_path.eq.${row.metadata.nextcloud_path},metadata->>original_filename.eq.${row.metadata.original_filename}`)
-              .limit(1)
-              .maybeSingle();
-            if (existing) continue;
+        const resp = await fetch(`/api/nextcloud/list?userId=${encodeURIComponent(user.id)}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data?.success || !Array.isArray(data.files)) return;
 
-            await supabase.from('tracks').insert(row);
-          } catch (e) {
-            // continue
-          }
+        const knownPaths = new Set<string>();
+        const knownFilenames = new Set<string>();
+        const knownDownloadUrls = new Set<string>();
+        
+        for (const t of freshTracks || []) {
+          const meta = (t as any)?.metadata || {};
+          if (typeof meta?.nextcloud_path === 'string') knownPaths.add(meta.nextcloud_path);
+          if (typeof meta?.original_filename === 'string') knownFilenames.add(meta.original_filename);
+          if (typeof t.audio_url === 'string') knownDownloadUrls.add(t.audio_url);
         }
 
+        const newFiles = data.files.filter(f => {
+          if (typeof f.path !== 'string' || typeof f.filename !== 'string') return false;
+          return !knownPaths.has(f.path) && 
+                 !knownFilenames.has(f.filename) && 
+                 !knownDownloadUrls.has(f.downloadUrl);
+        });
+
+        if (newFiles.length > 0) {
+          console.log(`Found ${newFiles.length} truly new files to reconcile`);
+          
+          // Insert new tracks directly into Supabase from frontend
+          const newTracks = newFiles.map(file => {
+            // Basic metadata extraction from filename (e.g., "Artist - Title.mp3")
+            let title = file.filename.replace(/\.[^/.]+$/, ""); // remove extension
+            let artist = 'Unknown Artist';
+            
+            const parts = title.split(' - ');
+            if (parts.length > 1) {
+              artist = parts[0].trim();
+              title = parts.slice(1).join(' - ').trim();
+            }
+
+            return {
+              user_id: user.id,
+              title: title,
+              artist: artist,
+              album: 'Uploaded Tracks',
+              genre: 'Unknown',
+              audio_url: file.downloadUrl,
+              user_uploaded: true,
+              is_public: false,
+              duration: 0, // Duration is unknown at this stage
+              metadata: {
+                source: 'nextcloud_reconcile',
+                nextcloud_path: file.path,
+                original_filename: file.filename,
+                size: file.size,
+                contentType: file.contentType,
+              }
+            };
+          });
+
+          const { data: insertedTracks, error } = await supabase
+            .from('tracks')
+            .insert(newTracks)
+            .select();
+
+          if (error) {
+            console.error('Supabase insert error:', error);
+            toast({
+              title: "Fehler beim Hinzufügen von Tracks",
+              description: error.message,
+              variant: "destructive",
+            });
+          } else if (insertedTracks) {
+            console.log(`Successfully inserted ${insertedTracks.length} new tracks`);
+            // Refresh the track list from database instead of manually updating state
+            await fetchUserTracks();
+            toast({
+              title: "Neue Tracks hinzugefügt",
+              description: `${insertedTracks.length} neue Tracks wurden zur Bibliothek hinzugefügt.`,
+            });
+          }
+        }
+        
+        // Mark as reconciled
         sessionStorage.setItem(ranKey, '1');
-        await fetchUserTracks();
-      } catch (e) {
-        // ignore reconciliation errors
+      } catch (err) {
+        console.error("Failed to reconcile Nextcloud files:", err);
+        toast({
+          title: "Synchronisierungsfehler",
+          description: "Fehler beim Synchronisieren der Nextcloud-Dateien.",
+          variant: "destructive",
+        });
       }
-    })();
-  }, [user, loading, userTracks, fetchUserTracks]);
+    };
+    
+    reconcile();
+  }, [user, loading, toast]); // Removed userTracks dependency to prevent infinite loop
 
   // Toggle track public status
   const toggleTrackPublic = async (track: Track, isPublic: boolean) => {
@@ -370,7 +396,7 @@ export default function MyUploads() {
               nextcloud_path: `${user.id}/${audioFileName.replace(/[\/\\:*?"<>|]/g, '_')}`
             },
           })
-          .select('id')
+          .select('*')
           .single();
         if (trackError) throw trackError;
 
@@ -381,6 +407,16 @@ export default function MyUploads() {
         } catch (plErr) {
           console.warn('Failed to attach track to uploads playlist', plErr);
         }
+        // Optimistically add to UI immediately
+        try {
+          if (inserted) {
+            setUserTracks((prev) => {
+              const exists = prev.some((t) => t.id === (inserted as any).id);
+              if (exists) return prev;
+              return [inserted as any as Track, ...prev];
+            });
+          }
+        } catch {}
         success += 1;
       } catch (e: any) {
         failed += 1;
