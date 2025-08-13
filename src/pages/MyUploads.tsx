@@ -237,11 +237,12 @@ export default function MyUploads() {
         try {
           const nextcloud = new NextcloudService();
           const result = await nextcloud.uploadAndShare(
-            file, 
+            file,
             audioFileName.replace(/[\/\\:*?"<>|]/g, '_'), // Clean filename for Nextcloud
             (progress) => {
               setUploadProgress(Math.min(99, Math.round(((index) / total) * 100 + (progress * 0.8) / total)));
-            }
+            },
+            user.id
           );
           
           if (!result.success) {
@@ -274,7 +275,8 @@ export default function MyUploads() {
             metadata: { 
               storage_provider: 'nextcloud',
               original_filename: file.name,
-              nextcloud_path: audioFileName
+              // Store nested path: userId/filename for per-user folder layout
+              nextcloud_path: `${user.id}/${audioFileName.replace(/[\/\\:*?"<>|]/g, '_')}`
             },
           })
           .select('id')

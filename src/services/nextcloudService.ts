@@ -8,16 +8,18 @@ export class NextcloudService {
   }
   
   async uploadAndShare(
-    file: File, 
-    filename: string, 
-    onProgress?: (progress: number) => void
+    file: File,
+    filename: string,
+    onProgress?: (progress: number) => void,
+    userId?: string
   ): Promise<{ success: boolean; downloadUrl?: string; error?: string }> {
     try {
       console.log('📤 Starting Nextcloud upload via API:', filename);
       
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('filename', filename);
+  formData.append('filename', filename);
+  if (userId) formData.append('userId', userId);
       
       onProgress?.(10);
       

@@ -100,7 +100,7 @@ app.post('/api/nextcloud/upload', upload.single('file'), async (req, res) => {
     console.log('📤 Nextcloud upload request received - adding to queue');
     
     const { file } = req;
-    const { filename } = req.body;
+    const { filename, userId } = req.body;
     
     if (!file) {
       return res.status(400).json({ success: false, error: 'No file provided' });
@@ -108,7 +108,7 @@ app.post('/api/nextcloud/upload', upload.single('file'), async (req, res) => {
 
     // Upload Task für die Queue
     const uploadTask = async () => {
-      return await performNextcloudUpload(file, filename);
+      return await performNextcloudUpload(file, filename, userId);
     };
 
     // Upload zur Queue hinzufügen
@@ -127,7 +127,7 @@ app.post('/api/nextcloud/upload', upload.single('file'), async (req, res) => {
 });
 
 // Separate Funktion für den eigentlichen Upload
-async function performNextcloudUpload(file, filename) {
+async function performNextcloudUpload(file, filename, userId) {
   const auth = Buffer.from(`${nextcloudConfig.username}:${nextcloudConfig.password}`).toString('base64');
   
   console.log('📁 Creating audio directory...');
@@ -144,9 +144,23 @@ async function performNextcloudUpload(file, filename) {
     throw new Error('Rate limited by Nextcloud - too many requests');
   }
   
+  // Ensure per-user subfolder if provided
+  let userSubdir = '';
+  if (userId && typeof userId === 'string') {
+    userSubdir = `${userId.replaceAll('..','_').replaceAll('/', '_')}/`;
+    console.log('📁 Ensuring user subdirectory:', userSubdir);
+    const userDirUrl = `${nextcloudConfig.baseUrl}/remote.php/dav/files/${nextcloudConfig.username}/audio/${encodeURIComponent(userSubdir.replace(/\/$/, ''))}/`;
+    await fetch(userDirUrl, {
+      method: 'MKCOL',
+      headers: { 'Authorization': `Basic ${auth}` }
+    });
+  }
+
   console.log('⬆️ Uploading file to Nextcloud...');
   // 2. Upload file
-  const uploadUrl = `${nextcloudConfig.baseUrl}/remote.php/dav/files/${nextcloudConfig.username}/audio/${filename}`;
+  const encodedFile = encodeURIComponent(filename);
+  const uploadUrl = `${nextcloudConfig.baseUrl}/remote.php/dav/files/${nextcloudConfig.username}/audio/${userSubdir}${encodedFile}`
+    .replace(/\+/g, '%20');
   const uploadResponse = await fetch(uploadUrl, {
     method: 'PUT',
     headers: {
@@ -167,9 +181,10 @@ async function performNextcloudUpload(file, filename) {
   
   console.log('🔗 Creating public share...');
   // 3. Create public share
+  const sharePath = `/audio/${userSubdir}${filename}`;
   const shareData = new URLSearchParams({
     'shareType': '3',
-    'path': `/audio/${filename}`,
+    'path': sharePath,
     'permissions': '1'
   });
   
@@ -225,20 +240,20 @@ async function performNextcloudUpload(file, filename) {
   };
 }
 
-// Nextcloud Delete Endpoint
-app.delete('/api/nextcloud/delete/:filename', async (req, res) => {
+// Nextcloud Delete Endpoint (supports nested paths under /audio via :path(*))
+app.delete('/api/nextcloud/delete/:path(*)', async (req, res) => {
   try {
     console.log('🗑️ Nextcloud delete request received');
     
-    const { filename } = req.params;
+    const { path } = req.params;
     
-    if (!filename) {
-      return res.status(400).json({ success: false, error: 'No filename provided' });
+    if (!path) {
+      return res.status(400).json({ success: false, error: 'No path provided' });
     }
 
-    const result = await performNextcloudDelete(filename);
+    const result = await performNextcloudDelete(path);
     
-    console.log('✅ Delete completed:', filename);
+    console.log('✅ Delete completed:', path);
     res.json(result);
     
   } catch (error) {
@@ -394,13 +409,20 @@ async function performNextcloudDeleteByUrl(fileUrl) {
 }
 
 // Separate Funktion für das eigentliche Löschen
-async function performNextcloudDelete(filename) {
+async function performNextcloudDelete(pathSegment) {
   const auth = Buffer.from(`${nextcloudConfig.username}:${nextcloudConfig.password}`).toString('base64');
   
-  console.log('🗑️ Deleting file from Nextcloud:', filename);
+  console.log('🗑️ Deleting file from Nextcloud:', pathSegment);
   
+  // Encode each segment to preserve slashes in nested paths
+  const encodedPath = pathSegment
+    .split('/')
+    .filter(Boolean)
+    .map(s => encodeURIComponent(s))
+    .join('/');
+
   // WebDAV DELETE-Anfrage an die Datei
-  const deleteUrl = `${nextcloudConfig.baseUrl}/remote.php/dav/files/${nextcloudConfig.username}/audio/${filename}`;
+  const deleteUrl = `${nextcloudConfig.baseUrl}/remote.php/dav/files/${nextcloudConfig.username}/audio/${encodedPath}`;
   const deleteResponse = await fetch(deleteUrl, {
     method: 'DELETE',
     headers: {
@@ -417,11 +439,11 @@ async function performNextcloudDelete(filename) {
   if (deleteResponse.status !== 204) {
     // Prüfen ob die Datei bereits nicht existiert (404)
     if (deleteResponse.status === 404) {
-      console.log('⚠️ File not found in Nextcloud (already deleted):', filename);
+      console.log('⚠️ File not found in Nextcloud (already deleted):', pathSegment);
       return { 
         success: true, 
         message: 'File not found (already deleted)',
-        filename 
+        path: pathSegment 
       };
     }
     
@@ -433,7 +455,7 @@ async function performNextcloudDelete(filename) {
   return { 
     success: true, 
     message: 'File deleted successfully',
-    filename 
+    path: pathSegment 
   };
 }
 
